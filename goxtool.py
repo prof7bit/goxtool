@@ -489,10 +489,13 @@ class BaseClient(EventSource):
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         
-        # The very first signed call will sometimes fail (WTF???)
-        # so we send it twice. requesting private/info twice won't hurt.
         self.send_signed_call("private/info", {}, "info")
+        self.send_signed_call("private/orders", {}, "orders")
+        self.send_signed_call("private/idkey", {}, "idkey")
         
+        # The very first signed call will sometimes fail (WTF???), sometimes
+        # even the first two calls, so I just send everything twice until I
+        # found out why. Requesting it twice won't hurt.
         self.send_signed_call("private/info", {}, "info")
         self.send_signed_call("private/orders", {}, "orders")
         self.send_signed_call("private/idkey", {}, "idkey")
