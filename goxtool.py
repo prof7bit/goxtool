@@ -4,7 +4,8 @@
 Tool to display live MtGox market info and
 framework for experimenting with trading bots
 """
-
+#  Copyright (c) 2013 Bernd Kreuss <prof7bit@gmail.com>
+#
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation; either version 3 of the License, or
@@ -111,7 +112,57 @@ class GoxConfig(SafeConfigParser):
         if not self.has_option(section, option):
             self.set(section, option, default)
             self.save()
-            
+
+class Signal():
+    """callback functions can be connected to a signal and will be called
+    when the signal's send() method is invoked. The callbacks receive
+    two arguments: the sender of the signal and a custom data object.
+    No more than exactly one signal will be delivered at the same time
+    application-wide, concurrent threads will wait in the send() method
+    until the lock is releaesed again. The lock is reentrant."""
+    
+    _lock = threading.RLock()
+    
+    def __init__(self):
+        self._slots = []
+
+    def send(self, sender, data):
+        """dispatch signal to all subscribed slots"""
+        received = False
+        with self._lock:
+            for slot in self._slots:
+                try:
+                    slot(sender, data)
+                    received = True
+                    
+                # pylint: disable=W0702
+                except:
+                    logging.critical(traceback.format_exc)
+        return received
+
+    def connect(self, slot):
+        """connect a slot to this signal"""
+        if not slot in self._slots:
+            self._slots.append(slot)
+
+
+class BaseObject():
+    """base class for all objects that might want to log debugging
+    messages to the log window. It has a debug() method that can be
+    used similar to print() and has a signal_debug signal where others
+    can connect to receive these mesages"""
+    
+    def __init__(self):
+        self.signal_debug = Signal()
+
+    def debug(self, *args):
+        """send a string composed of all *args to the slots who
+        are connected to signal_debug or send it to the logger if
+        nobody is subscribed"""
+        msg = " ".join([str(x) for x in args])
+        if not self.signal_debug.send(self, (msg)):
+            logging.debug(msg)
+        
 
 class Secret:
     """Manage the MtGox API secret. This class has methods to decrypt the
@@ -119,19 +170,17 @@ class Secret:
     encrypted file. The methods encrypt() and decrypt() will block and ask
     questions on the command line, they are called outside the curses
     environment (yes, its a quick and dirty hack but it works for now)."""
-    key = ""
-    secret = ""
 
     S_OK            = 0
     S_FAIL          = 1
     S_NO_SECRET     = 2
     S_FAIL_FATAL    = 3
 
-    config = None
-
     def __init__(self, config):
         """initialize the instance"""
         self.config = config
+        self.key = ""
+        self.secret = ""
 
     def decrypt(self, password):
         """decrypt the two lines of the secret file with the given password.
@@ -249,74 +298,9 @@ class Secret:
         return (self.secret != "") and (self.key != "")
 
 
-class EventSource():
-    """can generate events to which observers can subscribe"""
-    
-    EVT_DEBUG = -1
-    
-    def __init__(self):
-        """initialize a new EventSource instance"""
-        self._observers = []
-        self._lock = threading.RLock()
-        
-    def subscribe(self, event, function):
-        """subscribe to event. function will be called with 2 parameters:
-        the instance who created the event and data (usually a tuple of values
-        whose exact struture depends on the sender and the kind of event)"""
-        if not (event, function) in self._observers:
-            self._observers.append((event, function))
-
-    def unsubscribe(self, event, function):
-        """ unsubscribe this function from this event"""
-        for i in range(len(self._observers)):
-            if self._observers[i] == (event, function):
-                self._observers.pop(i)
-                return
-
-    def dispatch(self, event, data, sender=None):
-        """dispatch the event to all its subscribed observers. The sender field
-        will be set to self (the event source) unless a different sender is
-        specified as the lat argument. This can be useful when passing through
-        events from child objects to one's own subscribers."""
-        with self._lock:
-            delivered = False
-            if not sender:
-                sender = self
-            for (evt, func) in self._observers:
-                if evt == event:
-                    try:
-                        func(sender, data)
-                        delivered = True
-                        
-                    # pylint: disable=W0703
-                    except Exception:
-                        err = "### error in '%s'-listener\n%s" \
-                            % (func.__name__, traceback.format_exc())
-                        if event == self.EVT_DEBUG:
-                            logging.debug(err)
-                        else:
-                            self.debug(err)
-                            
-        return delivered
-
-    def debug(self, *args):
-        """send a string composed of all *args to the observers who
-        are subscribed to the EVT_DEBUG event or print it to stdout if
-        nobody is subscribed"""
-        msg = " ".join([str(x) for x in args])
-        if not self.dispatch(self.EVT_DEBUG, (msg)):
-            print(msg)
-
 class OHLCV():
     """represents a chart candle. tim is POSIX timestamp of open time,
     prices and volume are integers like in the other parts of the gox API"""
-    
-    tim  = 0
-    opn  = 0
-    hig  = 0
-    low  = 0
-    cls  = 0
-    vol  = 0
     
     def __init__(self, tim, opn, hig, low, cls, vol):
         self.tim = tim
@@ -336,36 +320,35 @@ class OHLCV():
         self.vol += volume
 
 
-class History(EventSource):
+class History(BaseObject):
     """represents the trading history"""
-
-    EVT_CHANGED = 0
-
-    timeframe = 0 # seconds per candle
-    candles = []
     
     def __init__(self, gox, timeframe):
-        EventSource.__init__(self)
+        BaseObject.__init__(self)
+
+        self.signal_changed = Signal()
+        
         self.gox = gox
         self.candles = []
         self.timeframe = timeframe
-        gox.subscribe(gox.EVT_TRADE,        self.on_trade)
-        gox.subscribe(gox.EVT_FULLHISTORY,  self.on_fullhistory)
+        
+        gox.signal_trade.connect(self.slot_trade)
+        gox.signal_fullhistory.connect(self.slot_fullhistory)
 
     def add_candle(self, candle):
         """add a new candle to the history"""
         self._add_candle(candle)
-        self.dispatch(self.EVT_CHANGED, (self.length()))
+        self.signal_changed.send(self, (self.length()))
 
-    def on_trade(self, dummy_sender, (date, price, volume, own)):
-        """event handler for EVT_TRADE event"""
+    def slot_trade(self, dummy_sender, (date, price, volume, own)):
+        """event handler for signal_trade"""
         if not own:
             time_round = int(date / self.timeframe) * self.timeframe
             candle = self.last_candle()
             if candle:
                 if candle.tim == time_round:
                     candle.update(price, volume)
-                    self.dispatch(self.EVT_CHANGED, (1))
+                    self.signal_changed.send(self, (1))
                 else:
                     self.debug("### opening new candle")
                     self.add_candle(OHLCV(
@@ -375,10 +358,10 @@ class History(EventSource):
                     time_round, price, price, price, price, volume))
 
     def _add_candle(self, candle):
-        """add a new candle to the history but don't fire EVT_CHANGED event"""
+        """add a new candle to the history but don't fire signal_changed"""
         self.candles.insert(0, candle)
 
-    def on_fullhistory(self, dummy_sender, (history)):
+    def slot_fullhistory(self, dummy_sender, (history)):
         """process the result of the fullhistory request"""
         self.candles = []
         new_candle = OHLCV(0, 0, 0, 0, 0, 0)
@@ -397,7 +380,7 @@ class History(EventSource):
         # insert current (incomplete) candle
         self._add_candle(new_candle)
         self.debug("### got %d candles" % self.length())
-        self.dispatch(self.EVT_CHANGED, (self.length()))
+        self.signal_changed.send(self, (self.length()))
 
     def last_candle(self):
         """return the last (current) candle or None if empty"""
@@ -411,27 +394,24 @@ class History(EventSource):
         return len(self.candles)
         
 
-class BaseClient(EventSource):
+class BaseClient(BaseObject):
     """abstract base class for SocketIOClient and WebsocketClient"""
-
-    currency = ""
-    socket = None
-    secret = None
-    config = None
-    
-    EVT_RECV        = 0
-    EVT_FULLDEPTH   = 1
-    EVT_FULLHISTORY = 2
 
     SOCKETIO_HOST = "socketio.mtgox.com"
     WEBSOCKET_HOST = "websocket.mtgox.com"
     HTTP_HOST = "mtgox.com"
     
     def __init__(self, currency, secret, config):
-        EventSource.__init__(self)
+        BaseObject.__init__(self)
+
+        self.signal_recv        = Signal()
+        self.signal_fulldepth   = Signal()
+        self.signal_fullhistory = Signal()
+
         self.currency = currency
         self.secret = secret
         self.config = config
+        self.socket = None
 
     def start(self):
         """start the client"""
@@ -452,7 +432,7 @@ class BaseClient(EventSource):
             self.debug("requesting initial full depth")
             fulldepth = urllib2.urlopen("https://" +  self.HTTP_HOST \
                 + "/api/1/BTC" + self.currency + "/fulldepth")
-            self.dispatch(self.EVT_FULLDEPTH, (json.load(fulldepth)))
+            self.signal_fulldepth.send(self, (json.load(fulldepth)))
             fulldepth.close()
 
         start_thread(fulldepth_thread)
@@ -472,7 +452,7 @@ class BaseClient(EventSource):
             history = json.load(res)
             res.close()
             if history["result"] == "success":
-                self.dispatch(self.EVT_FULLHISTORY, history["return"])
+                self.signal_fullhistory.send(self, history["return"])
 
         start_thread(history_thread)
         
@@ -486,20 +466,13 @@ class BaseClient(EventSource):
         download of the initial full market depth"""
 
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
+        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
         
         self.send_signed_call("private/info", {}, "info")
         self.send_signed_call("private/orders", {}, "orders")
         self.send_signed_call("private/idkey", {}, "idkey")
         
-        # The very first signed call will sometimes fail (WTF???), sometimes
-        # even the first two calls, so I just send everything twice until I
-        # found out why. Requesting it twice won't hurt.
-        self.send_signed_call("private/info", {}, "info")
-        self.send_signed_call("private/orders", {}, "orders")
-        self.send_signed_call("private/idkey", {}, "idkey")
-
         if self.config.get_bool("gox", "load_fulldepth"):
             self.request_fulldepth()
 
@@ -576,7 +549,7 @@ class WebsocketClient(BaseClient):
     def _recv_thread(self):
         """connect to the webocket and tart receiving inan infinite loop.
         Try to reconnect whenever connection is lost. Each received json
-        string will be dispatched as an EVT_RECV event"""
+        string will be dispatched with a signal_recv signal"""
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         while True:  #loop 0 (connect, reconnect)
@@ -593,8 +566,8 @@ class WebsocketClient(BaseClient):
                 while True: #loop1 (read messages)
                     str_json = self.socket.recv()
                     if str_json[0] == "{":
-                        self.dispatch(self.EVT_RECV, (str_json))
-                    
+                        self.signal_recv.send(self, (str_json))
+                
                 
             # pylint: disable=W0703
             except Exception as exc:
@@ -620,7 +593,7 @@ class SocketIOClient(BaseClient):
         """this is the main thread that is running all the time. It will
         connect and then read (blocking) on the socket in an infinite
         loop. SocketIO messages ('2::', etc.) are handled here immediately
-        and all received json strings are dispathed a an EVT_RECV event."""
+        and all received json strings are dispathed with signal_recv."""
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         htp = {True: "https://", False: "http://"}[use_ssl]
@@ -661,7 +634,7 @@ class SocketIOClient(BaseClient):
                     if prefix == "4::/mtgox:":
                         str_json = msg[10:]
                         if str_json[0] == "{":
-                            self.dispatch(self.EVT_RECV, (str_json))
+                            self.signal_recv.send(self, (str_json))
                             
             # pylint: disable=W0703
             except Exception as exc:
@@ -676,54 +649,50 @@ class SocketIOClient(BaseClient):
         (as opposed to plain websockts) and the underlying websocket
         will then do the needed framing on top of that."""
         self.socket.send("4::/mtgox:" + json_str)
-    
 
-class Gox(EventSource):
+
+# pylint: disable=R0902
+class Gox(BaseObject):
     """represents the API of the MtGox exchange. An Instance of this
     class will connect to the streaming socket.io API, receive live
     events, can trigger own callback functions on all events, has
     methods to buy and sell"""
-    
-    EVT_DEPTH        = 0
-    EVT_TRADE        = 1
-    EVT_TICKER       = 2
-    EVT_FULLDEPTH    = 3
-    EVT_FULLHISTORY  = 4
-    EVT_WALLET       = 5
-    EVT_USERORDER    = 6
-    
-    wallet = {}
-    currency    = ""
-
-    client          = None
-    orderbook       = None
-    config          = None
-    history         = None
-
-    _got_idkey      = False
 
     def __init__(self, secret, config):
         """initialize the gox API but do not yet connect to it.
         currency is the 3-letter symbol denoting the currency
         (for example 'USD' or 'JPY') to be traded"""
-        EventSource.__init__(self)
+        BaseObject.__init__(self)
+        
+        self.signal_depth        = Signal()
+        self.signal_trade        = Signal()
+        self.signal_ticker       = Signal()
+        self.signal_fulldepth    = Signal()
+        self.signal_fullhistory  = Signal()
+        self.signal_wallet       = Signal()
+        self.signal_userorder    = Signal()
+    
+        self._idkey      = ""
+        self.wallet = {}
+        
         self.config = config
         self.currency = config.get("gox", "currency", "USD")
         
         self.history = History(self, 60 * 15)
-        self.history.subscribe(self.history.EVT_DEBUG,      self.on_debug)
+        self.history.signal_debug.connect(self.slot_debug)
         
         self.orderbook = OrderBook(self)
-        self.orderbook.subscribe(self.orderbook.EVT_DEBUG,  self.on_debug)
+        self.orderbook.signal_debug.connect(self.slot_debug)
         
         if self.config.get_bool("gox", "use_plain_old_websocket"):
             self.client = WebsocketClient(self.currency, secret, config)
         else:
             self.client = SocketIOClient(self.currency, secret, config)
-        self.client.subscribe(self.client.EVT_DEBUG,        self.on_debug)
-        self.client.subscribe(self.client.EVT_RECV,         self.on_recv)
-        self.client.subscribe(self.client.EVT_FULLDEPTH,    self.on_fulldepth)
-        self.client.subscribe(self.client.EVT_FULLHISTORY,  self.on_fullhistory)
+        self.client.signal_debug.connect(self.slot_debug)
+        self.client.signal_recv.connect(self.slot_recv)
+        self.client.signal_fulldepth.connect(self.slot_fulldepth)
+        self.client.signal_fullhistory.connect(self.slot_fullhistory)
+
     
     def start(self):
         """connect to MtGox and start receiving events."""
@@ -740,7 +709,7 @@ class Gox(EventSource):
         }
         res = self.client.http_signed_call(endpoint, params)
         if "result" in res and res["result"] == "success":
-            self.dispatch(self.EVT_USERORDER,
+            self.signal_userorder.send(self,
                 (price, volume, typ, res["return"], "pending"))
             return(res["return"])
         else:
@@ -763,7 +732,7 @@ class Gox(EventSource):
         }
         res = self.client.http_signed_call(endpoint, params)
         if "result" in res and res["result"] == "success":
-            self.dispatch(self.EVT_USERORDER,
+            self.signal_userorder.send(self,
                 (0, 0, "", res["return"], "removed"))
             return True
         else:
@@ -788,22 +757,22 @@ class Gox(EventSource):
                 if order.oid != "":
                     self.cancel(order.oid)
 
-    def on_debug(self, sender, data):
-        """pass through the debug messages from child objects"""
-        self.dispatch(self.EVT_DEBUG, data, sender)
+    def slot_debug(self, sender, data):
+        """pass through the debug signals from child objects"""
+        self.signal_debug.send(sender, data)
 
-    def on_fulldepth(self, sender, data):
-        """pass through the fulldepth event from the client"""
-        self.dispatch(self.EVT_FULLDEPTH, data, sender)
+    def slot_fulldepth(self, sender, data):
+        """pass through the fulldepth signal from the client"""
+        self.signal_fulldepth.send(sender, data)
 
-    def on_fullhistory(self, sender, data):
-        """event handler for EVT_FULLHISTORY"""
-        self.dispatch(self.EVT_FULLHISTORY, data, sender)
+    def slot_fullhistory(self, sender, data):
+        """slot for signal_fullhistory"""
+        self.signal_fullhistory.send(sender, data)
     
-    def on_recv(self, dummy_sender, (str_json)):
-        """Event handler for EVT_RECV, handle new incoming
-        JSON message. Decode the JSON string into a Python object
-        and dispatch it to the method that can handle it."""
+    def slot_recv(self, dummy_sender, (str_json)):
+        """Slot for signal_recv, handle new incoming JSON message. Decode the
+        JSON string into a Python object and dispatch it to the method that
+        can handle it."""
         try:
             msg = json.loads(str_json)
             if "ticker" in msg:
@@ -823,6 +792,26 @@ class Gox(EventSource):
                 # we should log this, helps with debugging
                 self.debug(str_json)
 
+                # Workaround: Maybe a bug in their server software,
+                # I don't know whats missing. Its all poorly documented :-(
+                # Sometimes these API calls that were sent right after
+                # connecting fail the first time for no reason, if this
+                # happens just send them again. This happens only somtimes
+                # and sending them a second time will always make it work.
+                if "success" in msg and "id" in msg and not msg["success"]:
+                    if msg["id"] == "idkey":
+                        self.debug("### resending private/idkey")
+                        self.client.send_signed_call(
+                            "private/idkey", {}, "idkey")
+                    if msg["id"] == "info":
+                        self.debug("### resending private/info")
+                        self.client.send_signed_call(
+                            "private/info", {}, "info")
+                    if msg["id"] == "orders":
+                        self.debug("### resending private/orders")
+                        self.client.send_signed_call(
+                            "private/orders", {}, "orders")
+
         # pylint: disable=W0703
         except Exception:
             self.debug(traceback.format_exc())
@@ -837,7 +826,7 @@ class Gox(EventSource):
         
         self.debug(" tick:  bid:", int2str(bid, self.currency),
             "ask:", int2str(ask, self.currency))
-        self.dispatch(self.EVT_TICKER, (bid, ask))
+        self.signal_ticker.send(self, (bid, ask))
     
     def _on_depth(self, msg):
         """handle incoming depth message"""
@@ -853,7 +842,7 @@ class Gox(EventSource):
             "depth: ", type_str+":", int2str(price, self.currency),
             "vol:", int2str(volume, "BTC"),
             "now:", int2str(total_volume, "BTC"))
-        self.dispatch(self.EVT_DEPTH, (type_str, price, volume, total_volume))
+        self.signal_depth.send(self, (type_str, price, volume, total_volume))
     
     def _on_trade(self, msg):
         """handle incoming trade mesage"""
@@ -870,7 +859,7 @@ class Gox(EventSource):
         self.debug(
             "trade:      ", int2str(price, self.currency),
             "vol:", int2str(volume, "BTC"))
-        self.dispatch(self.EVT_TRADE, (date, price, volume, own))
+        self.signal_trade.send(self, (date, price, volume, own))
 
     def _on_call_result(self, msg):
         """handle result of authenticated API call"""
@@ -879,7 +868,7 @@ class Gox(EventSource):
 
         if reqid == "idkey":
             self.debug("### got key, subscribing to account messages")
-            self._got_idkey = True
+            self._idkey = result
             self.client.send(json.dumps({"op":"mtgox.subscribe", "key":result}))
             return
 
@@ -906,7 +895,7 @@ class Gox(EventSource):
             for currency in gox_wallet:
                 self.wallet[currency] = int(
                     gox_wallet[currency]["Balance"]["value_int"])
-            self.dispatch(self.EVT_WALLET, ())
+            self.signal_wallet.send(self, ())
             return
 
         if reqid == "order_add":
@@ -925,11 +914,11 @@ class Gox(EventSource):
                 volume = int(order["amount"]["value_int"])
                 typ = order["type"]
                 status = order["status"]
-                self.dispatch(self.EVT_USERORDER,
+                self.signal_userorder.send(self,
                     (price, volume, typ, oid, status))
 
         else: # removed (filled or canceled)
-            self.dispatch(self.EVT_USERORDER, (0, 0, "", oid, "removed"))
+            self.signal_userorder.send(self, (0, 0, "", oid, "removed"))
 
     def _on_wallet(self, dummy_msg):
         """handle incoming wallet message"""
@@ -942,12 +931,6 @@ class Gox(EventSource):
 class Order:
     """represents an order in the orderbook"""
 
-    price   = 0
-    volume  = 0
-    typ     = ""
-    oid     = ""
-    status  = ""
-
     def __init__(self, price, volume, typ, oid="", status=""):
         """initialize a new order object"""
         self.price = price
@@ -957,33 +940,34 @@ class Order:
         self.status = status
 
 
-class OrderBook(EventSource):
+class OrderBook(BaseObject):
     """represents the orderbook. Each Gox instance has one
     instance of OrderBook to maintain the open orders. This also
     maintains a list of own orders belonging to this account"""
-
-    EVT_CHANGED = 0
-    
-    bids = [] # list of Order(), lowest ask first
-    asks = [] # list of Order(), highest bid first
-    owns = [] # list of Order(), unordered list
-
-    bid = 0
-    ask = 0
-    
+        
     def __init__(self, gox):
         """create a new empty orderbook and associate it with its
         Gox instance"""
-        EventSource.__init__(self)
+        BaseObject.__init__(self)
         self.gox = gox
-        gox.subscribe(gox.EVT_TICKER,       self.on_tick)
-        gox.subscribe(gox.EVT_DEPTH,        self.on_depth)
-        gox.subscribe(gox.EVT_TRADE,        self.on_trade)
-        gox.subscribe(gox.EVT_USERORDER,    self.on_user_order)
-        gox.subscribe(gox.EVT_FULLDEPTH,    self.on_fulldepth)
+
+        self.signal_changed = Signal()
+
+        gox.signal_ticker.connect(self.slot_ticker)
+        gox.signal_depth.connect(self.slot_depth)
+        gox.signal_trade.connect(self.slot_trade)
+        gox.signal_userorder.connect(self.slot_user_order)
+        gox.signal_fulldepth.connect(self.slot_fulldepth)
+        
+        self.bids = [] # list of Order(), lowest ask first
+        self.asks = [] # list of Order(), highest bid first
+        self.owns = [] # list of Order(), unordered list
+
+        self.bid = 0
+        self.ask = 0
     
-    def on_tick(self, dummy_sender, (bid, ask)):
-        """handler for EVT_TICKER event, incoming ticker message"""
+    def slot_ticker(self, dummy_sender, (bid, ask)):
+        """Slot for signal_ticker, incoming ticker message"""
         self.bid = bid
         self.ask = ask
         change = False
@@ -996,10 +980,10 @@ class OrderBook(EventSource):
             self.bids.pop(0)
             
         if change:
-            self.dispatch(self.EVT_CHANGED, ())
+            self.signal_changed.send(self, ())
 
-    def on_depth(self, dummy_sender, (typ, price, dummy_voldiff, total_vol)):
-        """handler for EVT_DEPTH event, process incoming depth message"""
+    def slot_depth(self, dummy_sender, (typ, price, dummy_voldiff, total_vol)):
+        """Slot for signal_depth, process incoming depth message"""
         # pylint: disable=R0912
 
         def must_insert_before(existing, new, typ):
@@ -1039,10 +1023,10 @@ class OrderBook(EventSource):
             update_list(self.asks, price, total_vol, "ask")
         if typ == "bid":
             update_list(self.bids, price, total_vol, "bid")
-        self.dispatch(self.EVT_CHANGED, ())
-        
-    def on_trade(self, dummy_sender, (dummy_date, price, volume, own)):
-        """handler for EVT_TRADE event, process incoming trade messages.
+        self.signal_changed.send(self, ())
+
+    def slot_trade(self, dummy_sender, (dummy_date, price, volume, own)):
+        """Slot for signal_trade event, process incoming trade messages.
         For trades that also affect own orders this will be called twice:
         once during the normal public trade message, affecting the public
         bids and asks and then another time with own=True to update our
@@ -1069,11 +1053,11 @@ class OrderBook(EventSource):
             if len(self.bids):
                 self.bid = self.bids[0].price
             
-        self.dispatch(self.EVT_CHANGED, ())
+        self.signal_changed.send(self, ())
 
 
-    def on_user_order(self, dummy_sender, (price, volume, typ, oid, status)):
-        """handler for EVT_USERORDER, process incoming user_order mesage"""
+    def slot_user_order(self, dummy_sender, (price, volume, typ, oid, status)):
+        """Slot for signal_userorder, process incoming user_order mesage"""
         if status == "removed":
             for i in range(len(self.owns)):
                 if self.owns[i].oid == oid:
@@ -1104,10 +1088,10 @@ class OrderBook(EventSource):
                     "status:", status)
                 self.owns.append(Order(price, volume, typ, oid, status))
 
-        self.dispatch(self.EVT_CHANGED, ())
+        self.signal_changed.send(self, ())
 
-    def on_fulldepth(self, dummy_sender, (depth)):
-        """handler for EVT_FULLDEPTH event, process received fulldepth data.
+    def slot_fulldepth(self, dummy_sender, (depth)):
+        """Slot for signal_fulldepth, process received fulldepth data.
         This will clear the book and then re-initialize it from scratch."""
         self.debug("### got full depth: beginning update of orderbook...")
         self.bids = []
@@ -1121,21 +1105,21 @@ class OrderBook(EventSource):
             volume = int(order["amount_int"])
             self.bids.insert(0, Order(price, volume, "bid"))
             
-        self.dispatch(self.EVT_CHANGED, ())
+        self.signal_changed.send(self, ())
         self.debug("### got full depth: complete.")
 
     def reset_own(self):
         """clear all own orders"""
         self.owns = []
-        self.dispatch(self.EVT_CHANGED, ())
+        self.signal_changed.send(self, ())
 
     def add_own(self, order):
         """add order to the list of own orders. This method is used
         by the Gox object only during initial download of complete
         order list, all subsequent updates will then be done through
-        the event methods on_user_order and on_trade"""
+        the event methods slot_user_order and slot_trade"""
         self.owns.append(order)
-        self.dispatch(self.EVT_CHANGED, ())
+        self.signal_changed.send(self, ())
 
 
 #
@@ -1175,19 +1159,18 @@ def init_colors():
 class Win:
     """represents a curses window"""
     # pylint: disable=R0902
-    
-    posx = 0
-    posy = 0
-    width = 10
-    height = 10
-    termwidth = 10
-    termheight = 10
-    win = None
-    
+        
     def __init__(self, stdscr):
         """create and initialize the window. This will also subsequently
         call the paint() method."""
         self.stdscr = stdscr
+        self.posx = 0
+        self.posy = 0
+        self.width = 10
+        self.height = 10
+        self.termwidth = 10
+        self.termheight = 10
+        self.win = None
         self.__create_win()
 
     def calc_size(self):
@@ -1240,7 +1223,7 @@ class WinConsole(Win):
         """create the console window and connect it to the Gox debug
         callback function"""
         self.gox = gox
-        gox.subscribe(gox.EVT_DEBUG,    self.on_debug)
+        gox.signal_debug.connect(self.slot_debug)
         Win.__init__(self, stdscr)
         
     def paint(self):
@@ -1261,8 +1244,8 @@ class WinConsole(Win):
         self.height = HEIGHT_CON
         self.posy = self.termheight - self.height
 
-    def on_debug(self, dummy_gox, (txt)):
-        """this event handler will be subscribed to all debug events."""
+    def slot_debug(self, dummy_gox, (txt)):
+        """this slot will be connected to all debug signals."""
         self.write(txt)
         
     def write(self, txt):
@@ -1278,7 +1261,7 @@ class WinOrderBook(Win):
         """create the orderbook window and connect it to the
         onChanged callback of the gox.orderbook instance"""
         self.gox = gox
-        gox.orderbook.subscribe(gox.orderbook.EVT_CHANGED, self.on_changed)
+        gox.orderbook.signal_changed.connect(self.slot_changed)
         Win.__init__(self, stdscr)
         
     def calc_size(self):
@@ -1334,21 +1317,20 @@ class WinOrderBook(Win):
         self.win.refresh()
 
 
-    def on_changed(self, dummy_gox, dummy_data):
-        """event handler for orderbook.EVT_CHANGED"""
+    def slot_changed(self, dummy_gox, dummy_data):
+        """Slot for orderbook.signal_changed"""
         self.paint()
 
 
 class WinChart(Win):
     """the chart window"""
 
-    pmin = 0
-    pmax = 0
-    
     def __init__(self, stdscr, gox):
         self.gox = gox
-        gox.history.subscribe(gox.history.EVT_CHANGED, self.on_hist_changed)
-        gox.orderbook.subscribe(gox.orderbook.EVT_CHANGED, self.on_book_changed)
+        self.pmin = 0
+        self.pmax = 0
+        gox.history.signal_changed.connect(self.slot_hist_changed)
+        gox.orderbook.signal_changed.connect(self.slot_book_changed)
         Win.__init__(self, stdscr)
 
     def calc_size(self):
@@ -1453,21 +1435,22 @@ class WinChart(Win):
 
         self.win.refresh()
         
-    def on_hist_changed(self, dummy_history, (dummy_cnt)):
-        """event handler for history.EVT_CHANGED"""
+    def slot_hist_changed(self, dummy_history, (dummy_cnt)):
+        """Slot for history.signal_changed"""
         self.paint()
         
-    def on_book_changed(self, dummy_book, dummy_data):
-        """event handler for orderbook.EVT_CHANGED"""
+    def slot_book_changed(self, dummy_book, dummy_data):
+        """Slot for orderbook.signal_changed"""
         self.paint()
 
 
 class WinStatus(Win):
     """the status window at the top"""
+    
     def __init__(self, stdscr, gox):
         """create the status window and connect the needed callbacks"""
         self.gox = gox
-        gox.subscribe(gox.EVT_WALLET, self.on_status_changed)
+        gox.signal_wallet.connect(self.slot_status_changed)
         Win.__init__(self, stdscr)
         
     def calc_size(self):
@@ -1491,7 +1474,7 @@ class WinStatus(Win):
         self.win.addstr(0, 0, line1, COLOR_PAIR["status_text"])
         self.win.refresh()
 
-    def on_status_changed(self, dummy_sender, dummy_data):
+    def slot_status_changed(self, dummy_sender, dummy_data):
         """the callback funtion called by the Gox() instance"""
         self.paint()
 
@@ -1502,17 +1485,17 @@ class WinStatus(Win):
 #
 
 def log_debug(sender, (msg)):
-    """event handler for EVT_DEBUG events"""
+    """handler for signal_debug signals"""
     logging.debug("%s:%s", sender.__class__.__name__, msg)
 
 def logging_init(gox):
-    """initialize logger and subscribe to EVT_DEBUG events"""
+    """initialize logger and connect to signal_debug signals"""
     logging.basicConfig(filename='goxtool.log'
                        ,filemode='w'
                        ,format='%(asctime)s:%(levelname)s:%(message)s'
                        ,level=logging.DEBUG
                        )
-    gox.subscribe(gox.EVT_DEBUG, log_debug)
+    gox.signal_debug.connect(log_debug)
 
 
 #
