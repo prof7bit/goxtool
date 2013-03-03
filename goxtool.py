@@ -61,7 +61,11 @@ def start_thread(thread_func):
 
 # pylint: disable=R0904
 class GoxConfig(SafeConfigParser):
-    """return a config parser object with default values"""
+    """return a config parser object with default values. If you need to run
+    more Gox() objects at the same time you will also need to give each of them
+    them a separate GoxConfig() object. For this reason it takes a filename
+    in its constructor for the ini file, you can have separate configurations
+    for separate Gox() instances"""
     
     _DEFAULTS = [["gox", "currency", "USD"]
                 ,["gox", "use_ssl", "True"]
@@ -114,20 +118,39 @@ class GoxConfig(SafeConfigParser):
             self.save()
 
 class Signal():
-    """callback functions can be connected to a signal and will be called
-    when the signal's send() method is invoked. The callbacks receive
-    two arguments: the sender of the signal and a custom data object.
-    No more than exactly one signal will be delivered at the same time
-    application-wide, concurrent threads will wait in the send() method
-    until the lock is releaesed again. The lock is reentrant."""
+    """callback functions (so called slots) can be connected to a signal and
+    will be called when the signal's send() method is invoked. The callbacks
+    receive two arguments: the sender of the signal and a custom data object.
+    Two different threads won't be allowed to send signals at the same time
+    application-wide, concurrent threads will wait in the send() method until
+    the lock is releaesed again. The lock allows recursive reentry of the same
+    thread to avoid deadlocks when a slot wants to send a new signal itself."""
     
     _lock = threading.RLock()
     
     def __init__(self):
         self._slots = []
 
+    def connect(self, slot):
+        """connect a slot to this signal. The parameter slot is a funtion that
+        takes exactly 2 arguments (or a method that takes self plus 2 more
+        arguments), the first argument is a reference to the sender of the
+        signal and the second argument is the payload. The payload can be
+        anything, it totally depends on the sender and type of the signal."""
+        if not slot in self._slots:
+            self._slots.append(slot)
+
     def send(self, sender, data):
-        """dispatch signal to all subscribed slots"""
+        """dispatch signal to all connected slots. This is a synchronuos
+        operation, send() will not return before all slots have been called.
+        Also only exactly one thread is allowed to send() at any time, all
+        other threads that try to send() on *any* signal anywhere in the
+        application at the same time will be blocked until the lock is released
+        again. The lock will allow recursive reentry of the seme thread, this
+        means a slot can itself send() other signals before it returns without
+        problems. This method will return True if at least one slot has
+        sucessfully received the signal and False otherwise. If an exception
+        happens a traceback will be logged"""
         received = False
         with self._lock:
             for slot in self._slots:
@@ -140,25 +163,18 @@ class Signal():
                     logging.critical(traceback.format_exc)
         return received
 
-    def connect(self, slot):
-        """connect a slot to this signal"""
-        if not slot in self._slots:
-            self._slots.append(slot)
-
 
 class BaseObject():
-    """base class for all objects that might want to log debugging
-    messages to the log window. It has a debug() method that can be
-    used similar to print() and has a signal_debug signal where others
-    can connect to receive these mesages"""
+    """This base class only exists because of the debug() method that is used
+    in many of the goxtool objects to send debug output to the signal_debug."""
     
     def __init__(self):
         self.signal_debug = Signal()
 
     def debug(self, *args):
-        """send a string composed of all *args to the slots who
+        """send a string composed of all *args to all slots who
         are connected to signal_debug or send it to the logger if
-        nobody is subscribed"""
+        nobody is connected"""
         msg = " ".join([str(x) for x in args])
         if not self.signal_debug.send(self, (msg)):
             logging.debug(msg)
@@ -166,8 +182,8 @@ class BaseObject():
 
 class Secret:
     """Manage the MtGox API secret. This class has methods to decrypt the
-    secret from the secret file and it also provides a method to create this
-    encrypted file. The methods encrypt() and decrypt() will block and ask
+    entries in the ini file and it also provides a method to create these
+    entries. The methods encrypt() and decrypt() will block and ask
     questions on the command line, they are called outside the curses
     environment (yes, its a quick and dirty hack but it works for now)."""
 
@@ -183,7 +199,7 @@ class Secret:
         self.secret = ""
 
     def decrypt(self, password):
-        """decrypt the two lines of the secret file with the given password.
+        """decrypt "secret_secret" from the ini file with the given password.
         This will return false if decryption did not seem to be successful.
         After this menthod succeeded the application can access the secret"""
         
@@ -311,7 +327,7 @@ class OHLCV():
         self.vol = vol
 
     def update(self, price, volume):
-        """update high and low values and add to volume"""
+        """update high, low and close values and add to volume"""
         if price > self.hig:
             self.hig = price
         if price < self.low:
@@ -341,7 +357,7 @@ class History(BaseObject):
         self.signal_changed.send(self, (self.length()))
 
     def slot_trade(self, dummy_sender, (date, price, volume, own)):
-        """event handler for signal_trade"""
+        """slot gor gox.signal_trade"""
         if not own:
             time_round = int(date / self.timeframe) * self.timeframe
             candle = self.last_candle()
@@ -655,13 +671,11 @@ class SocketIOClient(BaseClient):
 class Gox(BaseObject):
     """represents the API of the MtGox exchange. An Instance of this
     class will connect to the streaming socket.io API, receive live
-    events, can trigger own callback functions on all events, has
-    methods to buy and sell"""
+    events, it will emit signals you can hook into for all events,
+    it has methods to buy and sell"""
 
     def __init__(self, secret, config):
-        """initialize the gox API but do not yet connect to it.
-        currency is the 3-letter symbol denoting the currency
-        (for example 'USD' or 'JPY') to be traded"""
+        """initialize the gox API but do not yet connect to it."""
         BaseObject.__init__(self)
         
         self.signal_depth        = Signal()
