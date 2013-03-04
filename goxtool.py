@@ -1154,7 +1154,7 @@ COLORS =    [["con_text",    curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["book_own",    curses.COLOR_BLACK,   curses.COLOR_YELLOW]
             ,["book_vol",    curses.COLOR_BLACK,   curses.COLOR_BLUE]
             
-            ,["chart_text",  curses.COLOR_BLACK,   curses.COLOR_CYAN]
+            ,["chart_text",  curses.COLOR_BLACK,   curses.COLOR_WHITE]
             ,["chart_up",    curses.COLOR_BLACK,   curses.COLOR_GREEN]
             ,["chart_down",  curses.COLOR_BLACK,   curses.COLOR_RED]
             ]
@@ -1365,10 +1365,10 @@ class WinChart(Win):
         screen_from_bottom = relative_from_bottom * self.height
         return int(self.height - screen_from_bottom)
         
-    def addstr_safe(self, posy, posx, character, color_pair):
+    def addch_safe(self, posy, posx, character, color_pair):
         """place a character but don't throw error in lower right corner"""
         try:
-            self.win.addstr(posy, posx, character, color_pair)
+            self.win.addch(posy, posx, character, color_pair)
 
         # pylint: disable=W0702
         except:
@@ -1384,16 +1384,16 @@ class WinChart(Win):
         for posy in range(self.height):
             if posy >= shigh and posy < sopen and posy < sclose:
                 # upper wick
-                self.addstr_safe(posy, posx, "|", COLOR_PAIR["chart_text"])
+                self.addch_safe(posy, posx, curses.ACS_VLINE, COLOR_PAIR["chart_text"])
             if posy >= sopen and posy < sclose:
                 # red body
-                self.addstr_safe(posy, posx, "#", COLOR_PAIR["chart_down"])
+                self.addch_safe(posy, posx, ord(" "), curses.A_REVERSE + COLOR_PAIR["chart_down"])
             if posy >= sclose and posy < sopen:
                 # green body
-                self.addstr_safe(posy, posx, "#", COLOR_PAIR["chart_up"])
+                self.addch_safe(posy, posx, ord(" "), curses.A_REVERSE + COLOR_PAIR["chart_up"])
             if posy >= sopen and posy >= sclose and posy < slow:
                 # lower wick
-                self.addstr_safe(posy, posx, "|", COLOR_PAIR["chart_text"])
+                self.addch_safe(posy, posx, curses.ACS_VLINE, COLOR_PAIR["chart_text"])
     
     def paint(self):
         """paint the visible portion of the chart"""
@@ -1437,15 +1437,15 @@ class WinChart(Win):
         for order in book.owns:
             if self.is_in_range(order.price):
                 posy = self.price_to_screen(order.price)
-                self.addstr_safe(posy, posx, "o", COLOR_PAIR["chart_text"])
+                self.addch_safe(posy, posx, ord("O"), COLOR_PAIR["chart_text"])
                 
         if self.is_in_range(book.bid):
             posy = self.price_to_screen(book.bid)
-            self.addstr_safe(posy, posx, "-", COLOR_PAIR["chart_up"])
+            self.addch_safe(posy, posx, curses.ACS_HLINE, COLOR_PAIR["chart_up"])
             
         if self.is_in_range(book.ask):
             posy = self.price_to_screen(book.ask)
-            self.addstr_safe(posy, posx, "-", COLOR_PAIR["chart_down"])
+            self.addch_safe(posy, posx, curses.ACS_HLINE, COLOR_PAIR["chart_down"])
 
         self.win.refresh()
         
