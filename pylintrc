@@ -1,0 +1,7 @@
+[REPORTS]
+output-format=parseable
+include-ids=yes
+reports=no
+
+[MESSAGES CONTROL]
+disable=I0011
