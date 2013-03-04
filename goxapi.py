@@ -1035,7 +1035,7 @@ class OrderBook(BaseObject):
         self.signal_changed.send(self, ())
 
     def slot_trade(self, dummy_sender,
-        (dummy_date, price, volume, dummy_typ, own)):
+        (dummy_date, price, volume, typ, own)):
         """Slot for signal_trade event, process incoming trade messages.
         For trades that also affect own orders this will be called twice:
         once during the normal public trade message, affecting the public
@@ -1043,21 +1043,27 @@ class OrderBook(BaseObject):
         own orders list"""
         
         def update_list(lst, price, volume):
-            """find the order in the list and update or remove it."""
-            for i in range(len(lst)):
+            """find the order in the list, update it or remove it if zero."""
+            for i in range(lst):
                 if lst[i].price == price:
                     lst[i].volume -= volume
                     if lst[i].volume <= 0:
                         lst.pop(i)
-                break
+                    break
                 
         if own:
             self.debug("### this trade message affects only our own order")
             update_list(self.owns, price, volume)
-                    
         else:
-            update_list(self.asks, price, volume)
-            update_list(self.bids, price, volume)
+            if typ == "ask":
+                while len(self.asks) and self.asks[0] < price:
+                    self.asks.pop(0)
+                update_list(self.asks, price, volume)
+            if typ == "bid":
+                while len(self.bids) and self.bids[0] > price:
+                    self.bids.pop(0)
+                update_list(self.bids, price, volume)
+
             if len(self.asks):
                 self.ask = self.asks[0].price
             if len(self.bids):
