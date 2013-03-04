@@ -34,7 +34,7 @@ class Strategy(goxapi.BaseObject):
     def slot_depth(self, gox, (typ, price, volume, total_volume)):
         pass
 
-    def slot_trade(self, gox, (date, price, volume, own)):
+    def slot_trade(self, gox, (date, price, volume, typ, own)):
         pass
 
     def slot_userorder(self, gox, (price, volume, typ, oid, status)):

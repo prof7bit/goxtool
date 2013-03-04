@@ -350,8 +350,8 @@ class History(BaseObject):
         self._add_candle(candle)
         self.signal_changed.send(self, (self.length()))
 
-    def slot_trade(self, dummy_sender, (date, price, volume, own)):
-        """slot gor gox.signal_trade"""
+    def slot_trade(self, dummy_sender, (date, price, volume, dummy_typ, own)):
+        """slot for gox.signal_trade"""
         if not own:
             time_round = int(date / self.timeframe) * self.timeframe
             candle = self.last_candle()
@@ -504,10 +504,10 @@ class BaseClient(BaseObject):
         sign = hmac.new(base64.b64decode(sec), post, hashlib.sha512).digest()
 
         headers = {
-			'User-Agent': 'goxtool.py',
-			'Rest-Key': key,
-			'Rest-Sign': base64.b64encode(sign)
-		}
+            'User-Agent': 'goxtool.py',
+            'Rest-Key': key,
+            'Rest-Sign': base64.b64encode(sign)
+        }
 
         req = urllib2.Request("https://" + self.HTTP_HOST + "/api/1/" \
             + api_endpoint, post, headers)
@@ -863,11 +863,12 @@ class Gox(BaseObject):
         date = int(msg["trade"]["date"])
         price = int(msg["trade"]["price_int"])
         volume = int(msg["trade"]["amount_int"])
+        typ = msg["trade"]["trade_type"]
         
         self.debug(
             "trade:      ", int2str(price, self.currency),
             "vol:", int2str(volume, "BTC"))
-        self.signal_trade.send(self, (date, price, volume, own))
+        self.signal_trade.send(self, (date, price, volume, typ, own))
 
     def _on_call_result(self, msg):
         """handle result of authenticated API call"""
@@ -1033,7 +1034,8 @@ class OrderBook(BaseObject):
             update_list(self.bids, price, total_vol, "bid")
         self.signal_changed.send(self, ())
 
-    def slot_trade(self, dummy_sender, (dummy_date, price, volume, own)):
+    def slot_trade(self, dummy_sender,
+        (dummy_date, price, volume, dummy_typ, own)):
         """Slot for signal_trade event, process incoming trade messages.
         For trades that also affect own orders this will be called twice:
         once during the normal public trade message, affecting the public
