@@ -10,12 +10,12 @@ framework for experimenting with trading bots
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
-#  
+#
 #  This program is distributed in the hope that it will be useful,
 #  but WITHOUT ANY WARRANTY; without even the implied warranty of
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #  GNU General Public License for more details.
-#  
+#
 #  You should have received a copy of the GNU General Public License
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
@@ -40,18 +40,18 @@ WIDTH_ORDERBOOK = 44
 
 COLORS =    [["con_text",    curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["status_text", curses.COLOR_BLUE,    curses.COLOR_CYAN]
-            
+
             ,["book_text",   curses.COLOR_BLACK,   curses.COLOR_BLUE]
             ,["book_bid",    curses.COLOR_BLACK,   curses.COLOR_GREEN]
             ,["book_ask",    curses.COLOR_BLACK,   curses.COLOR_RED]
             ,["book_own",    curses.COLOR_BLACK,   curses.COLOR_YELLOW]
             ,["book_vol",    curses.COLOR_BLACK,   curses.COLOR_BLUE]
-            
+
             ,["chart_text",  curses.COLOR_BLACK,   curses.COLOR_WHITE]
             ,["chart_up",    curses.COLOR_BLACK,   curses.COLOR_GREEN]
             ,["chart_down",  curses.COLOR_BLACK,   curses.COLOR_RED]
             ]
-            
+
 COLOR_PAIR = {}
 
 def init_colors():
@@ -66,7 +66,7 @@ def init_colors():
 class Win:
     """represents a curses window"""
     # pylint: disable=R0902
-        
+
     def __init__(self, stdscr):
         """create and initialize the window. This will also subsequently
         call the paint() method."""
@@ -84,7 +84,7 @@ class Win:
         """override this method to change posx, posy, width, height.
         It will be called before window creation and on resize."""
         pass
-        
+
     def paint(self):
         """paint the window. Override this with your own implementation.
         This method must paint the entire window contents from scratch.
@@ -100,7 +100,7 @@ class Win:
         recalculate its own new size and then call its paint() method"""
         del self.win
         self.__create_win()
-        
+
     def __create_win(self):
         """create the window. This will also be called on every resize,
         windows won't be moved, they will be deleted and recreated."""
@@ -132,7 +132,7 @@ class WinConsole(Win):
         self.gox = gox
         gox.signal_debug.connect(self.slot_debug)
         Win.__init__(self, stdscr)
-        
+
     def paint(self):
         """just empty the window after resize (I am lazy)"""
         self.win.bkgd(" ", COLOR_PAIR["con_text"])
@@ -145,7 +145,7 @@ class WinConsole(Win):
         otherwise now empty console window"""
         Win.resize(self)
         self.write("### console has been resized")
-        
+
     def calc_size(self):
         """put it at the bottom of the screen"""
         self.height = HEIGHT_CON
@@ -154,7 +154,7 @@ class WinConsole(Win):
     def slot_debug(self, dummy_gox, (txt)):
         """this slot will be connected to all debug signals."""
         self.write(txt)
-        
+
     def write(self, txt):
         """write a line of text, scroll if needed"""
         self.win.addstr("\n" + txt,  COLOR_PAIR["con_text"])
@@ -163,14 +163,14 @@ class WinConsole(Win):
 
 class WinOrderBook(Win):
     """the orderbook window"""
-    
+
     def __init__(self, stdscr, gox):
         """create the orderbook window and connect it to the
         onChanged callback of the gox.orderbook instance"""
         self.gox = gox
         gox.orderbook.signal_changed.connect(self.slot_changed)
         Win.__init__(self, stdscr)
-        
+
     def calc_size(self):
         """put it into the middle left side"""
         self.height = self.termheight - HEIGHT_CON - HEIGHT_STATUS
@@ -186,7 +186,7 @@ class WinOrderBook(Win):
         col_ask = COLOR_PAIR["book_ask"]
         col_vol = COLOR_PAIR["book_vol"]
         col_own = COLOR_PAIR["book_own"]
-        
+
         # print the asks
         # pylint: disable=C0301
         book = self.gox.orderbook
@@ -250,23 +250,24 @@ class WinChart(Win):
     def is_in_range(self, price):
         """is this price in the currently viible range?"""
         return price <= self.pmax and price >= self.pmin
-        
+
     def price_to_screen(self, price):
         """convert price into screen coordinates (y=0 is at the top!)"""
         relative_from_bottom = \
             float(price - self.pmin) / float(self.pmax - self.pmin)
         screen_from_bottom = relative_from_bottom * self.height
         return int(self.height - screen_from_bottom)
-        
+
     def addch_safe(self, posy, posx, character, color_pair):
         """place a character but don't throw error in lower right corner"""
-        try:
-            self.win.addch(posy, posx, character, color_pair)
+        if posy < 0 or posy > self.height - 1:
+            return
+        if posx < 0 or posx > self.width - 1:
+            return
+        if posx == self.width - 1 and posy == self.height - 1:
+            return
+        self.win.addch(posy, posx, character, color_pair)
 
-        # pylint: disable=W0702
-        except:
-            pass
-            
     def paint_candle(self, posx, candle):
         """paint a single candle"""
 
@@ -294,17 +295,17 @@ class WinChart(Win):
                 # pylint: disable=E1101
                 self.addch_safe(posy, posx,
                     curses.ACS_VLINE, COLOR_PAIR["chart_text"])
-    
+
     def paint(self):
         """paint the visible portion of the chart"""
 
-        
+
         self.win.bkgd(" ",  COLOR_PAIR["chart_text"])
         self.win.erase()
-        
+
         hist = self.gox.history
         book = self.gox.orderbook
-        
+
         self.pmax = 0
         self.pmin = 9999999999
 
@@ -339,13 +340,13 @@ class WinChart(Win):
                 posy = self.price_to_screen(order.price)
                 self.addch_safe(posy, posx,
                     ord("O"), COLOR_PAIR["chart_text"])
-                
+
         if self.is_in_range(book.bid):
             posy = self.price_to_screen(book.bid)
             # pylint: disable=E1101
             self.addch_safe(posy, posx,
                 curses.ACS_HLINE, COLOR_PAIR["chart_up"])
-            
+
         if self.is_in_range(book.ask):
             posy = self.price_to_screen(book.ask)
             # pylint: disable=E1101
@@ -353,11 +354,11 @@ class WinChart(Win):
                 curses.ACS_HLINE, COLOR_PAIR["chart_down"])
 
         self.win.refresh()
-        
+
     def slot_hist_changed(self, dummy_history, (dummy_cnt)):
         """Slot for history.signal_changed"""
         self.paint()
-        
+
     def slot_book_changed(self, dummy_book, dummy_data):
         """Slot for orderbook.signal_changed"""
         self.paint()
@@ -365,13 +366,13 @@ class WinChart(Win):
 
 class WinStatus(Win):
     """the status window at the top"""
-    
+
     def __init__(self, stdscr, gox):
         """create the status window and connect the needed callbacks"""
         self.gox = gox
         gox.signal_wallet.connect(self.slot_status_changed)
         Win.__init__(self, stdscr)
-        
+
     def calc_size(self):
         """place it at the top of the terminal"""
         self.height = HEIGHT_STATUS
@@ -424,7 +425,7 @@ def logging_init(gox):
 
 class StrategyManager():
     """load the strategy module"""
-    
+
     def __init__(self, gox, strategy_module_name):
         self.strategy_object = None
         self.strategy_module_name = strategy_module_name
@@ -440,16 +441,16 @@ class StrategyManager():
                     self.strategy_object.on_before_unload(self.gox)
                 reload(strategy_module)
                 self.strategy_object = strategy_module.Strategy(self.gox)
-            
+
             # pylint: disable=W0703
             except Exception:
                 self.gox.debug(traceback.format_exc())
-                
+
         except ImportError:
             self.gox.debug("### could not import %s.py"
                 % self.strategy_module_name)
             self.gox.debug("### running without strategy module")
-            
+
 
     def call_key(self, key):
         """try to call the on_key_* method in the strategymodule if it exists"""
@@ -457,11 +458,11 @@ class StrategyManager():
             method = getattr(self.strategy_object, "on_key_%s" % key)
             try:
                 method(self.gox)
-                
+
             # pylint: disable=W0703
             except Exception:
                 self.gox.debug(traceback.format_exc())
-            
+
         except AttributeError:
             self.gox.debug("### no handler defined for key: '%s'" % key)
 
@@ -473,13 +474,13 @@ class StrategyManager():
 
 def main():
     """main funtion, called from within the curses.wrapper"""
-    
+
     def curses_loop(stdscr):
         """This code runs within curses environment"""
         init_colors()
-        
+
         gox = Gox(secret, config)
-        
+
         conwin = WinConsole(stdscr, gox)
         bookwin = WinOrderBook(stdscr, gox)
         statuswin = WinStatus(stdscr, gox)

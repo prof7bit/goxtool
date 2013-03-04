@@ -1037,7 +1037,7 @@ class OrderBook(BaseObject):
         self.signal_changed.send(self, ())
 
     def slot_trade(self, dummy_sender,
-        (dummy_date, price, volume, dummy_typ, own)):
+        (dummy_date, price, volume, typ, own)):
         """Slot for signal_trade event, process incoming trade messages.
         For trades that also affect own orders this will be called twice:
         once during the normal public trade message, affecting the public
@@ -1057,20 +1057,14 @@ class OrderBook(BaseObject):
             self.debug("### this trade message affects only our own order")
             update_list(self.owns, price, volume)
         else:
-
-# trade type contains only random nonsense, bug on their server?
-#
-#            if typ == "bid":  # tryde_type=bid means an ask order was filled
-#                while len(self.asks) and self.asks[0] < price:
-#                    self.asks.pop(0)
-#                update_list(self.asks, price, volume)
-#            if typ == "ask":  # trade_type=ask means a bid order was filled
-#                while len(self.bids) and self.bids[0] > price:
-#                    self.bids.pop(0)
-#                update_list(self.bids, price, volume)
-
-            update_list(self.asks, price, volume)
-            update_list(self.bids, price, volume)
+            if typ == "bid":  # tryde_type=bid means an ask order was filled
+                while len(self.asks) and self.asks[0].price < price:
+                    self.asks.pop(0)
+                update_list(self.asks, price, volume)
+            if typ == "ask":  # trade_type=ask means a bid order was filled
+                while len(self.bids) and self.bids[0].price > price:
+                    self.bids.pop(0)
+                update_list(self.bids, price, volume)
 
             if len(self.asks):
                 self.ask = self.asks[0].price
@@ -1078,7 +1072,6 @@ class OrderBook(BaseObject):
                 self.bid = self.bids[0].price
 
         self.signal_changed.send(self, ())
-
 
     def slot_user_order(self, dummy_sender, (price, volume, typ, oid, status)):
         """Slot for signal_userorder, process incoming user_order mesage"""
