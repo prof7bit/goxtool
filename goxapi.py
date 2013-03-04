@@ -1044,7 +1044,7 @@ class OrderBook(BaseObject):
 
         def update_list(lst, price, volume):
             """find the order in the list, update it or remove it if zero."""
-            for i in range(lst):
+            for i in range(len(lst)):
                 if lst[i].price == price:
                     lst[i].volume -= volume
                     if lst[i].volume <= 0:
