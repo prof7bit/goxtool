@@ -425,28 +425,36 @@ def logging_init(gox):
 class StrategyManager():
     """load the strategy module"""
     
-    def __init__(self, gox):
-        self.strategy = None
+    def __init__(self, gox, strategy_module_name):
+        self.strategy_object = None
+        self.strategy_module_name = strategy_module_name
         self.gox = gox
         self.reload()
 
     def reload(self):
         """reload and re-initialize the strategy module"""
-        import strategy
         try:
-            if self.strategy:
-                self.strategy.on_before_unload(self.gox)
-            reload(strategy)
-            self.strategy = strategy.Strategy(self.gox)
-        
-        # pylint: disable=W0703
-        except Exception:
-            self.gox.debug(traceback.format_exc())
+            strategy_module = __import__(self.strategy_module_name)
+            try:
+                if self.strategy_object:
+                    self.strategy_object.on_before_unload(self.gox)
+                reload(strategy_module)
+                self.strategy_object = strategy_module.Strategy(self.gox)
+            
+            # pylint: disable=W0703
+            except Exception:
+                self.gox.debug(traceback.format_exc())
+                
+        except ImportError:
+            self.gox.debug("### could not import %s.py"
+                % self.strategy_module_name)
+            self.gox.debug("### running without strategy module")
+            
 
     def call_key(self, key):
         """try to call the on_key_* method in the strategymodule if it exists"""
         try:
-            method = getattr(self.strategy, "on_key_%s" % key)
+            method = getattr(self.strategy_object, "on_key_%s" % key)
             try:
                 method(self.gox)
                 
@@ -478,7 +486,7 @@ def main():
         chartwin = WinChart(stdscr, gox)
 
         logging_init(gox)
-        strategy_manager = StrategyManager(gox)
+        strategy_manager = StrategyManager(gox, strat_mod_name)
 
         gox.start()
         while True:
@@ -505,16 +513,21 @@ def main():
 
     # before we can finally start the curses UI we might need to do some user
     # interaction on the command line, regarding the encrypted secret
-    argp = argparse.ArgumentParser(description='MtGox live market data tool')
-    argp.add_argument('--add-secret', action= "store_true",
+    argp = argparse.ArgumentParser(description='MtGox live market data monitor'
+        + ' and trading bot experimentation framework')
+    argp.add_argument('--add-secret', action="store_true",
         help="prompt for API secret, encrypt it and then exit")
+    argp.add_argument('--strategy', action="store", default="strategy.py",
+        help="name of strategy module file, default=strategy.py")
     args = argp.parse_args()
 
     config = GoxConfig("goxtool.ini")
     secret = Secret(config)
     if args.add_secret:
+        # prompt for secret, encrypt and exit
         secret.prompt_encrypt()
     else:
+        strat_mod_name = args.strategy.replace(".py", "")
         if secret.prompt_decrypt() != secret.S_FAIL_FATAL:
             curses.wrapper(curses_loop)
             print

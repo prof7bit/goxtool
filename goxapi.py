@@ -69,14 +69,18 @@ class GoxConfig(SafeConfigParser):
     def __init__(self, filename):
         self.filename = filename
         SafeConfigParser.__init__(self)
-        self.read(filename)
+        self.load()
         for (sect, opt, default) in self._DEFAULTS:
             self._default(sect, opt, default)
 
     def save(self):
-        """save the config file"""
+        """save the config to the .ini file"""
         with open(self.filename, 'wb') as configfile:
             self.write(configfile)
+
+    def load(self):
+        """(re)load the onfig from the .ini file"""
+        self.read(self.filename)
 
     def get_safe(self, sect, opt):
         """get value without throwing exception."""
