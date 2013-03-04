@@ -614,7 +614,7 @@ class SocketIOClient(BaseClient):
 
                 url = urllib2.urlopen(
                     htp + self.SOCKETIO_HOST + "/socket.io/1?Currency=" +
-                    self.currency)
+                    self.currency, timeout=20)
                 params = url.read()
                 url.close()
 
@@ -867,7 +867,9 @@ class Gox(BaseObject):
 
         self.debug(
             "trade:      ", int2str(price, self.currency),
-            "vol:", int2str(volume, "BTC"))
+            "vol:", int2str(volume, "BTC"),
+            "type:", typ
+        )
         self.signal_trade.send(self, (date, price, volume, typ, own))
 
     def _on_call_result(self, msg):
@@ -1055,11 +1057,11 @@ class OrderBook(BaseObject):
             self.debug("### this trade message affects only our own order")
             update_list(self.owns, price, volume)
         else:
-            if typ == "ask":
+            if typ == "bid":  # tryde_type=bid means an ask order was filled
                 while len(self.asks) and self.asks[0] < price:
                     self.asks.pop(0)
                 update_list(self.asks, price, volume)
-            if typ == "bid":
+            if typ == "ask":  # trade_type=ask means a bid order was filled
                 while len(self.bids) and self.bids[0] > price:
                     self.bids.pop(0)
                 update_list(self.bids, price, volume)
