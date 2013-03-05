@@ -196,10 +196,7 @@ class WinOrderBook(Win):
         while pos >= 0 and  i < cnt:
             self.win.addstr(pos, 0,  int2str(book.asks[i].price, book.gox.currency), col_ask)
             self.win.addstr(pos, 12, int2str(book.asks[i].volume, "BTC"), col_vol)
-            ownvol = 0
-            for order in book.owns:
-                if order.price == book.asks[i].price:
-                    ownvol += order.volume
+            ownvol = book.get_own_volume_at(book.asks[i].price)
             if ownvol:
                 self.win.addstr(pos, 28, int2str(ownvol, "BTC"), col_own)
             pos -= 1
@@ -212,10 +209,7 @@ class WinOrderBook(Win):
         while pos < self.height and  i < cnt:
             self.win.addstr(pos, 0,  int2str(book.bids[i].price, book.gox.currency), col_bid)
             self.win.addstr(pos, 12, int2str(book.bids[i].volume, "BTC"), col_vol)
-            ownvol = 0
-            for order in book.owns:
-                if order.price == book.bids[i].price:
-                    ownvol += order.volume
+            ownvol = book.get_own_volume_at(book.asks[i].price)
             if ownvol:
                 self.win.addstr(pos, 28, int2str(ownvol, "BTC"), col_own)
             pos += 1

@@ -1125,6 +1125,14 @@ class OrderBook(BaseObject):
         self.signal_changed.send(self, ())
         self.debug("### got full depth: complete.")
 
+    def get_own_volume_at(self, price):
+        """returns the sum of the volume of own orders at a given price"""
+        volume = 0
+        for order in self.owns:
+            if order.price == price:
+                volume += order.volume
+        return volume
+
     def reset_own(self):
         """clear all own orders"""
         self.owns = []
