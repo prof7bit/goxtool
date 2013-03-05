@@ -1110,7 +1110,7 @@ class OrderBook(BaseObject):
     def slot_fulldepth(self, dummy_sender, (depth)):
         """Slot for signal_fulldepth, process received fulldepth data.
         This will clear the book and then re-initialize it from scratch."""
-        self.debug("### got full depth: beginning update of orderbook...")
+        self.debug("### got full depth: updating orderbook...")
         self.bids = []
         self.asks = []
         for order in depth["return"]["asks"]:
@@ -1123,7 +1123,6 @@ class OrderBook(BaseObject):
             self.bids.insert(0, Order(price, volume, "bid"))
 
         self.signal_changed.send(self, ())
-        self.debug("### got full depth: complete.")
 
     def get_own_volume_at(self, price):
         """returns the sum of the volume of own orders at a given price"""
