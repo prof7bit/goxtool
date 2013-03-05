@@ -36,7 +36,7 @@ import traceback
 
 HEIGHT_STATUS   = 2
 HEIGHT_CON      = 7
-WIDTH_ORDERBOOK = 44
+WIDTH_ORDERBOOK = 45
 
 COLORS =    [["con_text",    curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["status_text", curses.COLOR_BLUE,    curses.COLOR_CYAN]
