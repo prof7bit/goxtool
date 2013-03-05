@@ -23,7 +23,7 @@ framework for experimenting with trading bots
 
 import argparse
 import curses
-from goxapi import Secret, GoxConfig, Gox, int2str
+import goxapi
 import logging
 import math
 import sys
@@ -195,11 +195,11 @@ class WinOrderBook(Win):
         i = 0
         cnt = len(book.asks)
         while pos >= 0 and  i < cnt:
-            self.win.addstr(pos, 0,  int2str(book.asks[i].price, book.gox.currency), col_ask)
-            self.win.addstr(pos, 12, int2str(book.asks[i].volume, "BTC"), col_vol)
+            self.win.addstr(pos, 0,  goxapi.int2str(book.asks[i].price, book.gox.currency), col_ask)
+            self.win.addstr(pos, 12, goxapi.int2str(book.asks[i].volume, "BTC"), col_vol)
             ownvol = book.get_own_volume_at(book.asks[i].price)
             if ownvol:
-                self.win.addstr(pos, 28, int2str(ownvol, "BTC"), col_own)
+                self.win.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
             pos -= 1
             i += 1
 
@@ -208,11 +208,11 @@ class WinOrderBook(Win):
         i = 0
         cnt = len(book.bids)
         while pos < self.height and  i < cnt:
-            self.win.addstr(pos, 0,  int2str(book.bids[i].price, book.gox.currency), col_bid)
-            self.win.addstr(pos, 12, int2str(book.bids[i].volume, "BTC"), col_vol)
+            self.win.addstr(pos, 0,  goxapi.int2str(book.bids[i].price, book.gox.currency), col_bid)
+            self.win.addstr(pos, 12, goxapi.int2str(book.bids[i].volume, "BTC"), col_vol)
             ownvol = book.get_own_volume_at(book.bids[i].price)
             if ownvol:
-                self.win.addstr(pos, 28, int2str(ownvol, "BTC"), col_own)
+                self.win.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
             pos += 1
             i += 1
 
@@ -373,7 +373,7 @@ class WinChart(Win):
                 if posy < self.height - 1:
                     self.win.addstr(
                         posy, posx,
-                        int2str(labelprice, self.gox.currency),
+                        goxapi.int2str(labelprice, self.gox.currency),
                         COLOR_PAIR["chart_text"]
                     )
                 labelprice += step
@@ -411,7 +411,7 @@ class WinStatus(Win):
         if len(self.gox.wallet):
             for currency in self.gox.wallet:
                 line1 += currency + " " \
-                + int2str(self.gox.wallet[currency], currency).strip() \
+                + goxapi.int2str(self.gox.wallet[currency], currency).strip() \
                 + " + "
             line1 = line1.strip(" +")
         else:
@@ -504,7 +504,7 @@ def main():
         """This code runs within curses environment"""
         init_colors()
 
-        gox = Gox(secret, config)
+        gox = goxapi.Gox(secret, config)
 
         conwin = WinConsole(stdscr, gox)
         bookwin = WinOrderBook(stdscr, gox)
@@ -547,8 +547,8 @@ def main():
         help="name of strategy module file, default=strategy.py")
     args = argp.parse_args()
 
-    config = GoxConfig("goxtool.ini")
-    secret = Secret(config)
+    config = goxapi.GoxConfig("goxtool.ini")
+    secret = goxapi.Secret(config)
     if args.add_secret:
         # prompt for secret, encrypt and exit
         secret.prompt_encrypt()
