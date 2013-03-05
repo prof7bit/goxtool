@@ -25,6 +25,7 @@ import argparse
 import curses
 from goxapi import Secret, GoxConfig, Gox, int2str
 import logging
+import math
 import sys
 import traceback
 
@@ -245,6 +246,21 @@ class WinChart(Win):
         """is this price in the currently viible range?"""
         return price <= self.pmax and price >= self.pmin
 
+    def get_optimal_step(self, num_min):
+        """return optimal step size for painting y-axis labels so that the
+        range will be divided into at least num_min steps"""
+        if self.pmax <= self.pmin:
+            return None
+        stepex = float(self.pmax - self.pmin) / num_min
+        step1 = math.pow(10, math.floor(math.log(stepex, 10)))
+        step2 = step1 * 2
+        step5 = step1 * 5
+        if step5 <= stepex:
+            return step5
+        if step2 <= stepex:
+            return step2
+        return step1
+
     def price_to_screen(self, price):
         """convert price into screen coordinates (y=0 is at the top!)"""
         relative_from_bottom = \
@@ -346,6 +362,21 @@ class WinChart(Win):
             # pylint: disable=E1101
             self.addch_safe(posy, posx,
                 curses.ACS_HLINE, COLOR_PAIR["chart_down"])
+
+        # paint the y-axis labels
+        posx = 0
+        step = self.get_optimal_step(4)
+        if step:
+            labelprice = int(self.pmin / step) * step
+            while not labelprice > self.pmax:
+                posy = self.price_to_screen(labelprice)
+                if posy < self.height - 1:
+                    self.win.addstr(
+                        posy, posx,
+                        int2str(labelprice, self.gox.currency),
+                        COLOR_PAIR["chart_text"]
+                    )
+                labelprice += step
 
         self.win.refresh()
 
