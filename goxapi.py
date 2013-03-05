@@ -17,7 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0302,R0903,R0913
+# pylint: disable=C0302,C0301,R0903,R0913
 
 import base64
 from ConfigParser import SafeConfigParser
@@ -566,9 +566,11 @@ class WebsocketClient(BaseClient):
             try:
                 ws_url = wsp + self.WEBSOCKET_HOST \
                     + "/mtgox?Currency=" + self.currency
-                self.debug("connecting websocket %s... " % ws_url)
-                self.socket = websocket.create_connection(ws_url)
 
+                self.debug("*** Hint: connection problems? try: use_plain_old_websocket=False")
+                self.debug("trying plain old Websocket: %s ... " % ws_url)
+
+                self.socket = websocket.create_connection(ws_url)
                 self.debug("connected, subscribing needed channels")
                 self.channel_subscribe()
 
@@ -609,8 +611,8 @@ class SocketIOClient(BaseClient):
         htp = {True: "https://", False: "http://"}[use_ssl]
         while True:  #loop 0 (connect, reconnect)
             try:
-                self.debug("connecting to %s... " % self.SOCKETIO_HOST \
-                    + "(might take very loooooooong)")
+                self.debug("*** Hint: connection problems? try: use_plain_old_websocket=True")
+                self.debug("trying Socket.IO: %s ..." % self.SOCKETIO_HOST)
 
                 url = urllib2.urlopen(
                     htp + self.SOCKETIO_HOST + "/socket.io/1?Currency=" +
@@ -622,7 +624,7 @@ class SocketIOClient(BaseClient):
                 ws_url = wsp + self.SOCKETIO_HOST + "/socket.io/1/websocket/" \
                      + ws_id + "?Currency=" + self.currency
 
-                self.debug("trying websocket to %s" % ws_url)
+                self.debug("trying Websocket: %s ..." % ws_url)
                 self.socket = websocket.create_connection(ws_url)
 
                 self.debug("connected")
