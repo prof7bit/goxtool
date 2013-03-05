@@ -21,6 +21,8 @@ framework for experimenting with trading bots
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
+# pylint: disable=C0301
+
 import argparse
 import curses
 import goxapi
@@ -219,9 +221,18 @@ class WinOrderBook(Win):
         self.win.refresh()
 
 
-    def slot_changed(self, dummy_gox, dummy_data):
+    def slot_changed(self, book, dummy_data):
         """Slot for orderbook.signal_changed"""
         self.paint()
+
+        if self.gox.config.get_bool("goxtool", "set_xterm_title"):
+            last_candle = self.gox.history.last_candle()
+            if last_candle:
+                title = goxapi.int2str(last_candle.cls, self.gox.currency).strip()
+                title += " - goxtool -"
+                title += " bid:" + goxapi.int2str(book.bid, self.gox.currency).strip()
+                title += " ask:" + goxapi.int2str(book.ask, self.gox.currency).strip()
+                curses.putp("\033]0;%s\007" % title)
 
 
 class WinChart(Win):
@@ -429,19 +440,18 @@ class WinStatus(Win):
 # logging
 #
 
-def log_debug(sender, (msg)):
+def slot_debug(sender, (msg)):
     """handler for signal_debug signals"""
     logging.debug("%s:%s", sender.__class__.__name__, msg)
 
 def logging_init(gox):
     """initialize logger and connect to signal_debug signals"""
-    logging.basicConfig(filename='goxtool.log'
+    logging.basicConfig(filename='goxtool1.log'
                        ,filemode='w'
                        ,format='%(asctime)s:%(levelname)s:%(message)s'
                        ,level=logging.DEBUG
                        )
-    gox.signal_debug.connect(log_debug)
-
+    gox.signal_debug.connect(slot_debug)
 
 #
 #

@@ -64,6 +64,7 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "load_history", "True"]
                 ,["gox", "secret_key", ""]
                 ,["gox", "secret_secret", ""]
+                ,["goxtool", "set_xterm_title", "True"]
                 ]
 
     def __init__(self, filename):
@@ -121,9 +122,17 @@ class Signal():
     thread to avoid deadlocks when a slot wants to send a new signal itself."""
 
     _lock = threading.RLock()
+    signal_error = None
 
     def __init__(self):
         self._slots = []
+
+        # the Signal class itself has a static member signal_error where it
+        # will send tracebacks of exceptions that might happen. Here we
+        # initialize it if it does not exist already
+        if not Signal.signal_error:
+            Signal.signal_error = 1
+            Signal.signal_error = Signal()
 
     def connect(self, slot):
         """connect a slot to this signal. The parameter slot is a funtion that
@@ -134,7 +143,7 @@ class Signal():
         if not slot in self._slots:
             self._slots.append(slot)
 
-    def send(self, sender, data):
+    def send(self, sender, data, error_signal_on_error=True):
         """dispatch signal to all connected slots. This is a synchronuos
         operation, send() will not return before all slots have been called.
         Also only exactly one thread is allowed to send() at any time, all
@@ -154,7 +163,15 @@ class Signal():
 
                 # pylint: disable=W0702
                 except:
-                    logging.critical(traceback.format_exc())
+                    msg = traceback.format_exc()
+                    if error_signal_on_error:
+                        # send the traceback to the static Signal.signal_error
+                        # To avoid recursion if the connected slot itelf raises
+                        # an exception we use error_signal_on_error=False
+                        Signal.signal_error.send(self, (msg), False)
+                    else:
+                        logging.critical(msg)
+
         return received
 
 
@@ -688,6 +705,8 @@ class Gox(BaseObject):
         self.config = config
         self.currency = config.get("gox", "currency", "USD")
 
+        Signal.signal_error.connect(self.slot_debug)
+
         self.history = History(self, 60 * 15)
         self.history.signal_debug.connect(self.slot_debug)
 
@@ -702,7 +721,6 @@ class Gox(BaseObject):
         self.client.signal_recv.connect(self.slot_recv)
         self.client.signal_fulldepth.connect(self.slot_fulldepth)
         self.client.signal_fullhistory.connect(self.slot_fullhistory)
-
 
     def start(self):
         """connect to MtGox and start receiving events."""
