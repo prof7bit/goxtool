@@ -41,18 +41,19 @@ HEIGHT_STATUS   = 2
 HEIGHT_CON      = 7
 WIDTH_ORDERBOOK = 45
 
-COLORS =    [["con_text",    curses.COLOR_BLUE,    curses.COLOR_CYAN]
-            ,["status_text", curses.COLOR_BLUE,    curses.COLOR_CYAN]
+COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
+            ,["status_text",    curses.COLOR_BLUE,    curses.COLOR_CYAN]
 
-            ,["book_text",   curses.COLOR_BLACK,   curses.COLOR_BLUE]
-            ,["book_bid",    curses.COLOR_BLACK,   curses.COLOR_GREEN]
-            ,["book_ask",    curses.COLOR_BLACK,   curses.COLOR_RED]
-            ,["book_own",    curses.COLOR_BLACK,   curses.COLOR_YELLOW]
-            ,["book_vol",    curses.COLOR_BLACK,   curses.COLOR_BLUE]
+            ,["book_text",      curses.COLOR_BLACK,   curses.COLOR_BLUE]
+            ,["book_bid",       curses.COLOR_BLACK,   curses.COLOR_GREEN]
+            ,["book_ask",       curses.COLOR_BLACK,   curses.COLOR_RED]
+            ,["book_own",       curses.COLOR_BLACK,   curses.COLOR_YELLOW]
+            ,["book_vol",       curses.COLOR_BLACK,   curses.COLOR_BLUE]
 
-            ,["chart_text",  curses.COLOR_BLACK,   curses.COLOR_WHITE]
-            ,["chart_up",    curses.COLOR_BLACK,   curses.COLOR_GREEN]
-            ,["chart_down",  curses.COLOR_BLACK,   curses.COLOR_RED]
+            ,["chart_text",     curses.COLOR_BLACK,   curses.COLOR_WHITE]
+            ,["chart_up",       curses.COLOR_BLACK,   curses.COLOR_GREEN]
+            ,["chart_down",     curses.COLOR_BLACK,   curses.COLOR_RED]
+            ,["order_pending",  curses.COLOR_BLACK,   curses.COLOR_BLUE]
             ]
 
 COLOR_PAIR = {}
@@ -359,8 +360,12 @@ class WinChart(Win):
         for order in book.owns:
             if self.is_in_range(order.price):
                 posy = self.price_to_screen(order.price)
-                self.addch_safe(posy, posx,
-                    ord("O"), COLOR_PAIR["chart_text"])
+                if order.status == "pending":
+                    self.addch_safe(posy, posx,
+                        ord("o"), COLOR_PAIR["order_pending"])
+                else:
+                    self.addch_safe(posy, posx,
+                        ord("O"), COLOR_PAIR["chart_text"])
 
         if self.is_in_range(book.bid):
             posy = self.price_to_screen(book.bid)
