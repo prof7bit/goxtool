@@ -1134,6 +1134,9 @@ class OrderBook(BaseObject):
         self.debug("### got full depth: updating orderbook...")
         self.bids = []
         self.asks = []
+        if not "asks" in depth["return"]:
+            self.debug("### fulldepth contained no data!")
+            return
         for order in depth["return"]["asks"]:
             price = int(order["price_int"])
             volume = int(order["amount_int"])
@@ -1163,5 +1166,34 @@ class OrderBook(BaseObject):
         by the Gox object only during initial download of complete
         order list, all subsequent updates will then be done through
         the event methods slot_user_order and slot_trade"""
+
+        def insert_dummy(lst, is_ask):
+            """insert an empty (volume=0) dummy order into the bids or asks
+            to make the own order immediately appear in the UI, even if we
+            don't have the full orderbook yet. The dummy orders will be updated
+            later to reflect the true total volume at these prices once we get
+            authoritative data from the server"""
+            for i in range (len(lst)):
+                existing = lst[i]
+                if existing.price == order.price:
+                    return # no dummy needed, an order at this price exists
+                if is_ask:
+                    if existing.price > order.price:
+                        lst.insert(i, Order(order.price, 0, order.typ))
+                        return
+                else:
+                    if existing.price < order.price:
+                        lst.insert(i, Order(order.price, 0, order.typ))
+                        return
+
+            # end of list or empty
+            lst.append(Order(order.price, 0, order.typ))
+
         self.owns.append(order)
+
+        if order.typ == "ask":
+            insert_dummy(self.asks, True)
+        if order.typ == "bid":
+            insert_dummy(self.bids, False)
+
         self.signal_changed.send(self, ())
