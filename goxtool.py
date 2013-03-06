@@ -92,14 +92,26 @@ class Win:
         It will be called before window creation and on resize."""
         pass
 
+    def do_paint(self):
+        """call this if you want the window to repaint itself"""
+        self.paint()
+        self.done_paint()
+
+    def done_paint(self):
+        """update the sreen after paint operations, this will invoke all
+        necessary stuff to refresh all (possibly overlapping) windows in
+        the right order and then push it to the screen"""
+        self.win.touchwin()
+        curses.panel.update_panels()
+        curses.doupdate()
+
     def paint(self):
         """paint the window. Override this with your own implementation.
         This method must paint the entire window contents from scratch.
         It is automatically called after the window has been initially
         created and also after every resize. Call it explicitly when
         your data has changed and must be displayed"""
-        self.win.touchwin()
-        self.win.refresh()
+        pass
 
     def resize(self):
         """You must call this method from your main loop when the
@@ -115,7 +127,7 @@ class Win:
         self.win = curses.newwin(self.height, self.width, self.posy, self.posx)
         self.panel = curses.panel.new_panel(self.win)
         self.win.scrollok(True)
-        self.paint()
+        self.do_paint()
 
     def __calc_size(self):
         """calculate the default values for positionand size. By default
@@ -144,7 +156,6 @@ class WinConsole(Win):
     def paint(self):
         """just empty the window after resize (I am lazy)"""
         self.win.bkgd(" ", COLOR_PAIR["con_text"])
-        self.win.refresh()
 
     def resize(self):
         """resize and print a log message. Old messages will have been
@@ -166,7 +177,7 @@ class WinConsole(Win):
     def write(self, txt):
         """write a line of text, scroll if needed"""
         self.win.addstr("\n" + txt,  COLOR_PAIR["con_text"])
-        self.win.refresh()
+        self.done_paint()
 
 
 class WinOrderBook(Win):
@@ -223,13 +234,11 @@ class WinOrderBook(Win):
             pos += 1
             i += 1
 
-        self.win.refresh()
-
-
     def slot_changed(self, book, dummy_data):
         """Slot for orderbook.signal_changed"""
-        self.paint()
+        self.do_paint()
 
+        # update the xterm title (this is not handled by curses)
         if self.gox.config.get_bool("goxtool", "set_xterm_title"):
             last_candle = self.gox.history.last_candle()
             if last_candle:
@@ -398,15 +407,13 @@ class WinChart(Win):
                     )
                 labelprice += step
 
-        self.win.refresh()
-
     def slot_hist_changed(self, dummy_history, (dummy_cnt)):
         """Slot for history.signal_changed"""
-        self.paint()
+        self.do_paint()
 
     def slot_book_changed(self, dummy_book, dummy_data):
         """Slot for orderbook.signal_changed"""
-        self.paint()
+        self.do_paint()
 
 
 class WinStatus(Win):
@@ -437,11 +444,11 @@ class WinStatus(Win):
         else:
             line1 += "No info (yet)"
         self.win.addstr(0, 0, line1, COLOR_PAIR["status_text"])
-        self.win.refresh()
+
 
     def slot_status_changed(self, dummy_sender, dummy_data):
         """the callback funtion called by the Gox() instance"""
-        self.paint()
+        self.do_paint()
 
 
 class WinTst(Win):
@@ -458,7 +465,6 @@ class WinTst(Win):
 
     def paint(self):
         self.win.erase()
-        self.win.refresh()
 
 #
 #
