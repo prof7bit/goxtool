@@ -17,7 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0302,C0301,R0903,R0913
+# pylint: disable=C0302,C0301,R0902,R0903,R0913
 
 import base64
 from ConfigParser import SafeConfigParser
@@ -48,6 +48,7 @@ def start_thread(thread_func):
     thread = threading.Thread(None, thread_func)
     thread.daemon = True
     thread.start()
+    return thread
 
 # pylint: disable=R0904
 class GoxConfig(SafeConfigParser):
@@ -440,10 +441,18 @@ class BaseClient(BaseObject):
         self.secret = secret
         self.config = config
         self.socket = None
+        self._recv_thread = None
+        self._terminating = False
 
     def start(self):
         """start the client"""
-        start_thread(self._recv_thread)
+        self._recv_thread = start_thread(self._recv_thread_func)
+
+    def stop(self):
+        """stop the client"""
+        self._terminating = True
+        self.socket.close()
+        self._recv_thread.join()
 
     def send(self, json_str):
         """there exist 2 subtly different ways to send a string over a
@@ -484,7 +493,7 @@ class BaseClient(BaseObject):
 
         start_thread(history_thread)
 
-    def _recv_thread(self):
+    def _recv_thread_func(self):
         """this will be executed as the main receiving thread, each type of
         client (websocket or socketio) will implement its own"""
         raise NotImplementedError()
@@ -574,13 +583,13 @@ class WebsocketClient(BaseClient):
     def __init__(self, currency, secret, config):
         BaseClient.__init__(self, currency, secret, config)
 
-    def _recv_thread(self):
+    def _recv_thread_func(self):
         """connect to the webocket and tart receiving inan infinite loop.
         Try to reconnect whenever connection is lost. Each received json
         string will be dispatched with a signal_recv signal"""
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
-        while True:  #loop 0 (connect, reconnect)
+        while not self._terminating:  #loop 0 (connect, reconnect)
             try:
                 ws_url = wsp + self.WEBSOCKET_HOST \
                     + "/mtgox?Currency=" + self.currency
@@ -593,7 +602,7 @@ class WebsocketClient(BaseClient):
                 self.channel_subscribe()
 
                 self.debug("waiting for data...")
-                while True: #loop1 (read messages)
+                while not self._terminating: #loop1 (read messages)
                     str_json = self.socket.recv()
                     if str_json[0] == "{":
                         self.signal_recv.send(self, (str_json))
@@ -601,10 +610,10 @@ class WebsocketClient(BaseClient):
 
             # pylint: disable=W0703
             except Exception as exc:
-                self.debug(exc, "reconnecting in 5 seconds...")
-                if self.socket:
+                if not self._terminating:
+                    self.debug(exc, "reconnecting in 5 seconds...")
                     self.socket.close()
-                time.sleep(5)
+                    time.sleep(5)
 
 
     def send(self, json_str):
@@ -619,7 +628,7 @@ class SocketIOClient(BaseClient):
     def __init__(self, currency, secret, config):
         BaseClient.__init__(self, currency, secret, config)
 
-    def _recv_thread(self):
+    def _recv_thread_func(self):
         """this is the main thread that is running all the time. It will
         connect and then read (blocking) on the socket in an infinite
         loop. SocketIO messages ('2::', etc.) are handled here immediately
@@ -627,7 +636,7 @@ class SocketIOClient(BaseClient):
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         htp = {True: "https://", False: "http://"}[use_ssl]
-        while True:  #loop 0 (connect, reconnect)
+        while not self._terminating: #loop 0 (connect, reconnect)
             try:
                 self.debug("*** Hint: connection problems? try: use_plain_old_websocket=True")
                 self.debug("trying Socket.IO: %s ..." % self.SOCKETIO_HOST)
@@ -654,7 +663,7 @@ class SocketIOClient(BaseClient):
                 self.channel_subscribe()
 
                 self.debug("waiting for data...")
-                while True: #loop1 (read messages)
+                while not self._terminating: #loop1 (read messages)
                     msg = self.socket.recv()
                     if msg == "2::":
                         self.debug("### ping -> pong")
@@ -668,10 +677,10 @@ class SocketIOClient(BaseClient):
 
             # pylint: disable=W0703
             except Exception as exc:
-                self.debug(exc, "reconnecting in 5 seconds...")
-                if self.socket:
+                if not self._terminating:
+                    self.debug(exc, "reconnecting in 5 seconds...")
                     self.socket.close()
-                time.sleep(5)
+                    time.sleep(5)
 
     def send(self, json_str):
         """send a string to the websocket. This method will prepend it
@@ -727,6 +736,11 @@ class Gox(BaseObject):
         """connect to MtGox and start receiving events."""
         self.debug("starting gox streaming API, currency=" + self.currency)
         self.client.start()
+
+    def stop(self):
+        """shutdown the client"""
+        self.debug("shutdown...")
+        self.client.stop()
 
     def order(self, typ, price, volume):
         """place pending order. If price=0 then it will be filled at market"""

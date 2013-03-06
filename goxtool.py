@@ -578,8 +578,7 @@ def main():
 #                gox.debug("foo")
 #                dummy_blub = WinTst(stdscr, gox)
 
-        # shutdown; no more ugly tracebacks from here on
-        sys.stderr = open(os.devnull, 'w')
+        gox.stop()
 
 
     # before we can finally start the curses UI we might need to do some user
