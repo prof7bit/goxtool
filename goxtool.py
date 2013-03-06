@@ -21,13 +21,15 @@ framework for experimenting with trading bots
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0301
+# pylint: disable=C0301,R0912
 
 import argparse
 import curses
+import curses.panel
 import goxapi
 import logging
 import math
+import os
 import sys
 import traceback
 
@@ -82,6 +84,7 @@ class Win:
         self.termwidth = 10
         self.termheight = 10
         self.win = None
+        self.panel = None
         self.__create_win()
 
     def calc_size(self):
@@ -110,6 +113,7 @@ class Win:
         windows won't be moved, they will be deleted and recreated."""
         self.__calc_size()
         self.win = curses.newwin(self.height, self.width, self.posy, self.posx)
+        self.panel = curses.panel.new_panel(self.win)
         self.win.scrollok(True)
         self.paint()
 
@@ -440,6 +444,22 @@ class WinStatus(Win):
         self.paint()
 
 
+class WinTst(Win):
+    """a curses experiment, incomplete code, ignore"""
+    def __init__(self, stdscr, gox):
+        self.gox = gox
+        Win.__init__(self, stdscr)
+
+    def calc_size(self):
+        self.posx = 20
+        self.posy = 20
+        self.height = 19
+        self.width = 40
+
+    def paint(self):
+        self.win.erase()
+        self.win.refresh()
+
 #
 #
 # logging
@@ -451,7 +471,7 @@ def slot_debug(sender, (msg)):
 
 def logging_init(gox):
     """initialize logger and connect to signal_debug signals"""
-    logging.basicConfig(filename='goxtool1.log'
+    logging.basicConfig(filename='goxtool.log'
                        ,filemode='w'
                        ,format='%(asctime)s:%(levelname)s:%(message)s'
                        ,level=logging.DEBUG
@@ -531,6 +551,7 @@ def main():
 
         gox.start()
         while True:
+            conwin.win.keypad(1)
             key = conwin.win.getch()
             if key == ord("q"):
                 break
@@ -547,9 +568,12 @@ def main():
                 continue
             if key > ord("a") and key < ord("z"):
                 strategy_manager.call_key(chr(key))
+            if key == curses.KEY_F8:
+                gox.debug("foo")
+                dummy_blub = WinTst(stdscr, gox)
 
         # shutdown; no more ugly tracebacks from here on
-        sys.excepthook = lambda x, y, z: None
+        sys.stderr = open(os.devnull, 'w')
 
 
     # before we can finally start the curses UI we might need to do some user

@@ -165,10 +165,11 @@ class Signal():
                 except:
                     msg = traceback.format_exc()
                     if error_signal_on_error:
-                        # send the traceback to the static Signal.signal_error
-                        # To avoid recursion if the connected slot itelf raises
+                        # send the traceback to the static Signal.signal_error.
+                        # To avoid recursion if the connected slot itself raises
                         # an exception we use error_signal_on_error=False
-                        Signal.signal_error.send(self, (msg), False)
+                        if not Signal.signal_error.send(self, (msg), False):
+                            logging.critical(msg)
                     else:
                         logging.critical(msg)
 
