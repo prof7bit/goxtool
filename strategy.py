@@ -19,17 +19,16 @@ class Strategy(goxapi.BaseObject):
     def on_before_unload(self, gox):
         self.debug("### strategy will be unloaded")
 
-
-
     def on_key_b(self, gox):
-        self.debug("### someone pressed the b key")        
+        self.debug("### someone pressed the b key")
+
 
     def on_key_s(self, gox):
         self.debug("### someone pressed the s key")
 
 
     def slot_tick(self, gox, (bid, ask)):
-        pass        
+        pass
 
     def slot_depth(self, gox, (typ, price, volume, total_volume)):
         pass
@@ -40,4 +39,4 @@ class Strategy(goxapi.BaseObject):
     def slot_userorder(self, gox, (price, volume, typ, oid, status)):
         pass
 
-        
+

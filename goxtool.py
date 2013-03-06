@@ -29,8 +29,6 @@ import curses.panel
 import goxapi
 import logging
 import math
-import os
-import sys
 import traceback
 
 
@@ -422,7 +420,10 @@ class WinStatus(Win):
     def __init__(self, stdscr, gox):
         """create the status window and connect the needed callbacks"""
         self.gox = gox
+        self.order_lag = 0
+        self.order_lag_txt = ""
         gox.signal_wallet.connect(self.slot_status_changed)
+        gox.signal_orderlag.connect(self.slot_orderlag)
         Win.__init__(self, stdscr)
 
     def calc_size(self):
@@ -443,11 +444,20 @@ class WinStatus(Win):
             line1 = line1.strip(" +")
         else:
             line1 += "No info (yet)"
+
+        line2 = "Order-lag: " + self.order_lag_txt
         self.win.addstr(0, 0, line1, COLOR_PAIR["status_text"])
+        self.win.addstr(1, 0, line2, COLOR_PAIR["status_text"])
 
 
     def slot_status_changed(self, dummy_sender, dummy_data):
         """the callback funtion called by the Gox() instance"""
+        self.do_paint()
+
+    def slot_orderlag(self, dummy_sender, (usec, text)):
+        """slot for order_lag mesages"""
+        self.order_lag = usec
+        self.order_lag_txt = text
         self.do_paint()
 
 

@@ -17,7 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0302,C0301,R0902,R0903,R0913
+# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913
 
 import base64
 from ConfigParser import SafeConfigParser
@@ -459,6 +459,10 @@ class BaseClient(BaseObject):
         websocket. Each client class will override this send method"""
         raise NotImplementedError()
 
+    def request_order_lag(self):
+        """request the current order-lag"""
+        self.send_signed_call("order/lag", {}, "order_lag")
+
     def request_fulldepth(self):
         """start the fulldepth thread"""
 
@@ -509,6 +513,8 @@ class BaseClient(BaseObject):
         self.send_signed_call("private/info", {}, "info")
         self.send_signed_call("private/orders", {}, "orders")
         self.send_signed_call("private/idkey", {}, "idkey")
+
+        self.request_order_lag()
 
         if self.config.get_bool("gox", "load_fulldepth"):
             self.request_fulldepth()
@@ -701,16 +707,19 @@ class Gox(BaseObject):
         """initialize the gox API but do not yet connect to it."""
         BaseObject.__init__(self)
 
-        self.signal_depth        = Signal()
-        self.signal_trade        = Signal()
-        self.signal_ticker       = Signal()
-        self.signal_fulldepth    = Signal()
-        self.signal_fullhistory  = Signal()
-        self.signal_wallet       = Signal()
-        self.signal_userorder    = Signal()
+        self.signal_depth           = Signal()
+        self.signal_trade           = Signal()
+        self.signal_ticker          = Signal()
+        self.signal_fulldepth       = Signal()
+        self.signal_fullhistory     = Signal()
+        self.signal_wallet          = Signal()
+        self.signal_userorder       = Signal()
+        self.signal_orderlag        = Signal()
 
         self._idkey      = ""
         self.wallet = {}
+        self.order_lag = 0
+        self.msg_count = 0
 
         self.config = config
         self.currency = config.get("gox", "currency", "USD")
@@ -754,10 +763,13 @@ class Gox(BaseObject):
         if "result" in res and res["result"] == "success":
             self.signal_userorder.send(self,
                 (price, volume, typ, res["return"], "pending"))
-            return(res["return"])
+            res = res["return"]
         else:
             self.debug("### WTF??? order could not be placed!")
-            return ""
+            res = ""
+
+        self.client.request_order_lag()
+        return res
 
     def buy(self, price, volume):
         """new buy order, if price=0 then buy at market"""
@@ -777,10 +789,13 @@ class Gox(BaseObject):
         if "result" in res and res["result"] == "success":
             self.signal_userorder.send(self,
                 (0, 0, "", res["return"], "removed"))
-            return True
+            res = True
         else:
             self.debug("### WTF??? order could not be canceled!")
-            return False
+            res = False
+
+        self.client.request_order_lag()
+        return res
 
     def cancel_by_price(self, price):
         """cancel all orders at price"""
@@ -858,6 +873,10 @@ class Gox(BaseObject):
         # pylint: disable=W0703
         except Exception:
             self.debug(traceback.format_exc())
+
+        self.msg_count += 1
+        if (self.msg_count % 200) == 0:
+            self.client.request_order_lag()
 
     def _on_tick(self, msg):
         """handle incoming ticker message"""
@@ -944,11 +963,11 @@ class Gox(BaseObject):
             self.signal_wallet.send(self, ())
             return
 
-        if reqid == "order_add":
-            self.debug(result)
-
-        if reqid == "order_cancel":
-            self.debug(result)
+        if reqid == "order_lag":
+            lag_usec = result["lag"]
+            lag_text = result["lag_text"]
+            self.order_lag = lag_usec
+            self.signal_orderlag.send(self, (lag_usec, lag_text))
 
     def _on_user_order(self, msg):
         """handle incoming user_order message"""
@@ -1148,8 +1167,8 @@ class OrderBook(BaseObject):
         self.debug("### got full depth: updating orderbook...")
         self.bids = []
         self.asks = []
-        if not "asks" in depth["return"]:
-            self.debug("### fulldepth contained no data!")
+        if "error" in depth:
+            self.debug("### ", depth["error"])
             return
         for order in depth["return"]["asks"]:
             price = int(order["price_int"])
