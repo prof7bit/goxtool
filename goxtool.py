@@ -574,9 +574,9 @@ def main():
                 continue
             if key > ord("a") and key < ord("z"):
                 strategy_manager.call_key(chr(key))
-            if key == curses.KEY_F8:
-                gox.debug("foo")
-                dummy_blub = WinTst(stdscr, gox)
+#            if key == curses.KEY_F8:
+#                gox.debug("foo")
+#                dummy_blub = WinTst(stdscr, gox)
 
         # shutdown; no more ugly tracebacks from here on
         sys.stderr = open(os.devnull, 'w')
