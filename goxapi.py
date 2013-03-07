@@ -772,23 +772,7 @@ class Gox(BaseObject):
 
     def order(self, typ, price, volume):
         """place pending order. If price=0 then it will be filled at market"""
-        endpoint = "BTC" + self.currency + "/private/order/add"
-        params = {
-            "type": typ,
-            "amount_int": str(volume),
-            "price_int": str(price)
-        }
-        res = self.client.http_signed_call(endpoint, params)
-        if "result" in res and res["result"] == "success":
-            self.signal_userorder(self,
-                (price, volume, typ, res["return"], "pending"))
-            res = res["return"]
-        else:
-            self.debug("### WTF??? order could not be placed!")
-            res = ""
-
-        self.client.request_order_lag()
-        return res
+        self._send_order_add(typ, price, volume)
 
     def buy(self, price, volume):
         """new buy order, if price=0 then buy at market"""
@@ -800,21 +784,7 @@ class Gox(BaseObject):
 
     def cancel(self, oid):
         """cancel order"""
-        endpoint = "BTC" + self.currency + "/private/order/cancel"
-        params = {
-            "oid": oid
-        }
-        res = self.client.http_signed_call(endpoint, params)
-        if "result" in res and res["result"] == "success":
-            self.signal_userorder(self,
-                (0, 0, "", res["return"], "removed"))
-            res = True
-        else:
-            self.debug("### WTF??? order could not be canceled!")
-            res = False
-
-        self.client.request_order_lag()
-        return res
+        self._send_order_cancel(oid)
 
     def cancel_by_price(self, price):
         """cancel all orders at price"""
@@ -823,8 +793,6 @@ class Gox(BaseObject):
             if order.price == price:
                 if order.oid != "":
                     self.cancel(order.oid)
-                else:
-                    self.debug("### cannot cancel placeholder order, no oid.")
 
     def cancel_by_type(self, typ=None):
         """cancel all orders of type (or all orders if type=None)"""
@@ -859,10 +827,9 @@ class Gox(BaseObject):
 
                 # Workaround: Maybe a bug in their server software,
                 # I don't know whats missing. Its all poorly documented :-(
-                # Sometimes these API calls that were sent right after
-                # connecting fail the first time for no reason, if this
-                # happens just send them again. This happens only somtimes
-                # and sending them a second time will always make it work.
+                # Sometimes these API calls fail the first time for no reason,
+                # if this happens just send them again. This happens only
+                # somtimes (10%) and sending them again will eventually succeed.
                 if "success" in msg and "id" in msg and not msg["success"]:
                     if msg["message"] == "Invalid call":
                         if msg["id"] == "idkey":
@@ -885,14 +852,14 @@ class Gox(BaseObject):
                             price = int(parts[2])
                             volume = int(parts[3])
                             self.debug("### resending failed", msg["id"])
-                            self.send_order_add(typ, price, volume)
+                            self._send_order_add(typ, price, volume)
 
                         # resend a failed "order/cancel"
                         if "order_cancel:" in msg["id"]:
                             parts = msg["id"].split(":")
                             oid = parts[1]
                             self.debug("### resending failed", msg["id"])
-                            self.send_order_cancel(oid)
+                            self._send_order_cancel(oid)
 
 
 
@@ -1033,7 +1000,7 @@ class Gox(BaseObject):
         self.client.send_signed_call("private/info", {}, "info")
 
 
-    def send_order_add(self, typ, price, volume):
+    def _send_order_add(self, typ, price, volume):
         """send an order"""
         self.client.send_signed_call(
             "order/add",
@@ -1041,7 +1008,7 @@ class Gox(BaseObject):
             "order_add:%s:%d:%d" % (typ, price, volume)
         )
 
-    def send_order_cancel(self, oid):
+    def _send_order_cancel(self, oid):
         """cancel an order"""
         self.client.send_signed_call(
             "order/cancel",
