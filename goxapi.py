@@ -117,12 +117,12 @@ class GoxConfig(SafeConfigParser):
 
 class Signal():
     """callback functions (so called slots) can be connected to a signal and
-    will be called when the signal's send() method is invoked. The callbacks
-    receive two arguments: the sender of the signal and a custom data object.
-    Two different threads won't be allowed to send signals at the same time
-    application-wide, concurrent threads will wait in the send() method until
+    will be called when the signal is called (Signal implements __call__).
+    The slots receive two arguments: the sender of the signal and a custom
+    data object. Two different threads won't be allowed to send signals at the
+    same time application-wide, concurrent threads will have to wait until
     the lock is releaesed again. The lock allows recursive reentry of the same
-    thread to avoid deadlocks when a slot wants to send a new signal itself."""
+    thread to avoid deadlocks when a slot wants to send a signal itself."""
 
     _lock = threading.RLock()
     signal_error = None
