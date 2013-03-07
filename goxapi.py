@@ -164,10 +164,12 @@ class Signal():
         If a slot raises an exception a traceback will be sent to the static
         Signal.signal_error() or to logging.critical()"""
         with self._lock:
+            sent = False
             errors = []
             for func in self._functions:
                 try:
                     func(sender, data)
+                    sent = True
 
                 # pylint: disable=W0702
                 except:
@@ -177,6 +179,7 @@ class Signal():
                 for func in funcs:
                     try:
                         func(obj, sender, data)
+                        sent = True
 
                     # pylint: disable=W0702
                     except:
@@ -188,6 +191,7 @@ class Signal():
                 else:
                     logging.critical(error)
 
+            return sent
 
 
 class BaseObject():
@@ -860,18 +864,37 @@ class Gox(BaseObject):
                 # happens just send them again. This happens only somtimes
                 # and sending them a second time will always make it work.
                 if "success" in msg and "id" in msg and not msg["success"]:
-                    if msg["id"] == "idkey":
-                        self.debug("### resending private/idkey")
-                        self.client.send_signed_call(
-                            "private/idkey", {}, "idkey")
-                    if msg["id"] == "info":
-                        self.debug("### resending private/info")
-                        self.client.send_signed_call(
-                            "private/info", {}, "info")
-                    if msg["id"] == "orders":
-                        self.debug("### resending private/orders")
-                        self.client.send_signed_call(
-                            "private/orders", {}, "orders")
+                    if msg["message"] == "Invalid call":
+                        if msg["id"] == "idkey":
+                            self.debug("### resending private/idkey")
+                            self.client.send_signed_call(
+                                "private/idkey", {}, "idkey")
+                        if msg["id"] == "info":
+                            self.debug("### resending private/info")
+                            self.client.send_signed_call(
+                                "private/info", {}, "info")
+                        if msg["id"] == "orders":
+                            self.debug("### resending private/orders")
+                            self.client.send_signed_call(
+                                "private/orders", {}, "orders")
+
+                        # resend a failed "order/add"
+                        if "order_add:" in msg["id"]:
+                            parts = msg["id"].split(":")
+                            typ = parts[1]
+                            price = int(parts[2])
+                            volume = int(parts[3])
+                            self.debug("### resending failed", msg["id"])
+                            self.send_order_add(typ, price, volume)
+
+                        # resend a failed "order/cancel"
+                        if "order_cancel:" in msg["id"]:
+                            parts = msg["id"].split(":")
+                            oid = parts[1]
+                            self.debug("### resending failed", msg["id"])
+                            self.send_order_cancel(oid)
+
+
 
         # pylint: disable=W0703
         except Exception:
@@ -972,6 +995,21 @@ class Gox(BaseObject):
             self.order_lag = lag_usec
             self.signal_orderlag(self, (lag_usec, lag_text))
 
+        if "order_add:" in reqid:
+            parts = reqid.split(":")
+            typ = parts[1]
+            price = int(parts[2])
+            volume = int(parts[3])
+            oid = result
+            self.orderbook.add_own(Order(price, volume, typ, oid, "pending"))
+
+        if "order_cancel:" in reqid:
+            # cancel request has been received but we won't remove it from our
+            # own list now because it is still active on the server.
+            # do nothing now, let things happen in the user_order message
+            pass
+
+
     def _on_user_order(self, msg):
         """handle incoming user_order message"""
         order = msg["user_order"]
@@ -994,6 +1032,22 @@ class Gox(BaseObject):
         # so it will update automatically.
         self.client.send_signed_call("private/info", {}, "info")
 
+
+    def send_order_add(self, typ, price, volume):
+        """send an order"""
+        self.client.send_signed_call(
+            "order/add",
+            {"type": typ, "price_int": price, "amount_int": volume},
+            "order_add:%s:%d:%d" % (typ, price, volume)
+        )
+
+    def send_order_cancel(self, oid):
+        """cancel an order"""
+        self.client.send_signed_call(
+            "order/cancel",
+            {"oid": oid},
+            "order_cancel:%s" % oid
+        )
 
 
 class Order:
@@ -1192,6 +1246,13 @@ class OrderBook(BaseObject):
                 volume += order.volume
         return volume
 
+    def have_own_oid(self, oid):
+        """do we have an own order with this oid in our list already?"""
+        for order in self.owns:
+            if order.oid == oid:
+                return True
+        return False
+
     def reset_own(self):
         """clear all own orders"""
         self.owns = []
@@ -1225,11 +1286,12 @@ class OrderBook(BaseObject):
             # end of list or empty
             lst.append(Order(order.price, 0, order.typ))
 
-        self.owns.append(order)
+        if not self.have_own_oid(order.oid):
+            self.owns.append(order)
 
-        if order.typ == "ask":
-            insert_dummy(self.asks, True)
-        if order.typ == "bid":
-            insert_dummy(self.bids, False)
+            if order.typ == "ask":
+                insert_dummy(self.asks, True)
+            if order.typ == "bid":
+                insert_dummy(self.bids, False)
 
-        self.signal_changed(self, ())
+            self.signal_changed(self, ())
