@@ -25,6 +25,7 @@ from Crypto.Cipher import AES
 import getpass
 import hashlib
 import hmac
+import inspect
 import json
 import logging
 import time
@@ -32,6 +33,7 @@ import traceback
 import threading
 import urllib
 import urllib2
+import weakref
 import websocket
 
 def int2str(value_int, currency):
@@ -126,7 +128,8 @@ class Signal():
     signal_error = None
 
     def __init__(self):
-        self._slots = []
+        self._functions = weakref.WeakSet()
+        self._methods = weakref.WeakKeyDictionary()
 
         # the Signal class itself has a static member signal_error where it
         # will send tracebacks of exceptions that might happen. Here we
@@ -136,45 +139,55 @@ class Signal():
             Signal.signal_error = Signal()
 
     def connect(self, slot):
-        """connect a slot to this signal. The parameter slot is a funtion that
-        takes exactly 2 arguments (or a method that takes self plus 2 more
-        arguments), the first argument is a reference to the sender of the
-        signal and the second argument is the payload. The payload can be
-        anything, it totally depends on the sender and type of the signal."""
-        if not slot in self._slots:
-            self._slots.append(slot)
+        """connect a slot to this signal. The parameter slot can be a funtion
+        that takes exactly 2 arguments or a method that takes self plus 2 more
+        arguments, or it can even be even another signal. the first argument
+        is a reference to the sender of the signal and the second argument is
+        the payload. The payload can be anything, it totally depends on the
+        sender and type of the signal."""
+        if inspect.ismethod(slot):
+            if slot.__self__ not in self._methods:
+                self._methods[slot.__self__] = set()
+            self._methods[slot.__self__].add(slot.__func__)
+        else:
+            self._functions.add(slot)
 
-    def send(self, sender, data, error_signal_on_error=True):
+    def __call__(self, sender, data, error_signal_on_error=True):
         """dispatch signal to all connected slots. This is a synchronuos
-        operation, send() will not return before all slots have been called.
-        Also only exactly one thread is allowed to send() at any time, all
-        other threads that try to send() on *any* signal anywhere in the
+        operation, It will not return before all slots have been called.
+        Also only exactly one thread is allowed to emit signals at any time,
+        all other threads that try to emit *any* signal anywhere in the
         application at the same time will be blocked until the lock is released
         again. The lock will allow recursive reentry of the seme thread, this
-        means a slot can itself send() other signals before it returns without
-        problems. This method will return True if at least one slot has
-        sucessfully received the signal and False otherwise. If an exception
-        happens a traceback will be logged"""
-        received = False
+        means a slot can itself emit other signals before it returns (or
+        signals can be directly connected to other signals) without problems.
+        If a slot raises an exception a traceback will be sent to the static
+        Signal.signal_error() or to logging.critical()"""
         with self._lock:
-            for slot in self._slots:
+            errors = []
+            for func in self._functions:
                 try:
-                    slot(sender, data)
-                    received = True
+                    func(sender, data)
 
                 # pylint: disable=W0702
                 except:
-                    msg = traceback.format_exc()
-                    if error_signal_on_error:
-                        # send the traceback to the static Signal.signal_error.
-                        # To avoid recursion if the connected slot itself raises
-                        # an exception we use error_signal_on_error=False
-                        if not Signal.signal_error.send(self, (msg), False):
-                            logging.critical(msg)
-                    else:
-                        logging.critical(msg)
+                    errors.append(traceback.format_exc())
 
-        return received
+            for obj, funcs in self._methods.items():
+                for func in funcs:
+                    try:
+                        func(obj, sender, data)
+
+                    # pylint: disable=W0702
+                    except:
+                        errors.append(traceback.format_exc())
+
+            for error in errors:
+                if error_signal_on_error:
+                    Signal.signal_error(self, (error), False)
+                else:
+                    logging.critical(error)
+
 
 
 class BaseObject():
@@ -189,7 +202,7 @@ class BaseObject():
         are connected to signal_debug or send it to the logger if
         nobody is connected"""
         msg = " ".join([str(x) for x in args])
-        if not self.signal_debug.send(self, (msg)):
+        if not self.signal_debug(self, (msg)):
             logging.debug(msg)
 
 
@@ -367,7 +380,7 @@ class History(BaseObject):
     def add_candle(self, candle):
         """add a new candle to the history"""
         self._add_candle(candle)
-        self.signal_changed.send(self, (self.length()))
+        self.signal_changed(self, (self.length()))
 
     def slot_trade(self, dummy_sender, (date, price, volume, dummy_typ, own)):
         """slot for gox.signal_trade"""
@@ -377,7 +390,7 @@ class History(BaseObject):
             if candle:
                 if candle.tim == time_round:
                     candle.update(price, volume)
-                    self.signal_changed.send(self, (1))
+                    self.signal_changed(self, (1))
                 else:
                     self.debug("### opening new candle")
                     self.add_candle(OHLCV(
@@ -409,7 +422,7 @@ class History(BaseObject):
         # insert current (incomplete) candle
         self._add_candle(new_candle)
         self.debug("### got %d candles" % self.length())
-        self.signal_changed.send(self, (self.length()))
+        self.signal_changed(self, (self.length()))
 
     def last_candle(self):
         """return the last (current) candle or None if empty"""
@@ -473,7 +486,7 @@ class BaseClient(BaseObject):
             self.debug("requesting initial full depth")
             fulldepth = urllib2.urlopen("https://" +  self.HTTP_HOST \
                 + "/api/1/BTC" + self.currency + "/fulldepth")
-            self.signal_fulldepth.send(self, (json.load(fulldepth)))
+            self.signal_fulldepth(self, (json.load(fulldepth)))
             fulldepth.close()
 
         start_thread(fulldepth_thread)
@@ -493,7 +506,7 @@ class BaseClient(BaseObject):
             history = json.load(res)
             res.close()
             if history["result"] == "success":
-                self.signal_fullhistory.send(self, history["return"])
+                self.signal_fullhistory(self, history["return"])
 
         start_thread(history_thread)
 
@@ -611,14 +624,15 @@ class WebsocketClient(BaseClient):
                 while not self._terminating: #loop1 (read messages)
                     str_json = self.socket.recv()
                     if str_json[0] == "{":
-                        self.signal_recv.send(self, (str_json))
+                        self.signal_recv(self, (str_json))
 
 
             # pylint: disable=W0703
             except Exception as exc:
                 if not self._terminating:
                     self.debug(exc, "reconnecting in 5 seconds...")
-                    self.socket.close()
+                    if self.socket:
+                        self.socket.close()
                     time.sleep(5)
 
 
@@ -679,13 +693,14 @@ class SocketIOClient(BaseClient):
                     if prefix == "4::/mtgox:":
                         str_json = msg[10:]
                         if str_json[0] == "{":
-                            self.signal_recv.send(self, (str_json))
+                            self.signal_recv(self, (str_json))
 
             # pylint: disable=W0703
             except Exception as exc:
                 if not self._terminating:
                     self.debug(exc, "reconnecting in 5 seconds...")
-                    self.socket.close()
+                    if self.socket:
+                        self.socket.close()
                     time.sleep(5)
 
     def send(self, json_str):
@@ -724,22 +739,22 @@ class Gox(BaseObject):
         self.config = config
         self.currency = config.get("gox", "currency", "USD")
 
-        Signal.signal_error.connect(self.slot_debug)
+        Signal.signal_error.connect(self.signal_debug)
 
         self.history = History(self, 60 * 15)
-        self.history.signal_debug.connect(self.slot_debug)
+        self.history.signal_debug.connect(self.signal_debug)
 
         self.orderbook = OrderBook(self)
-        self.orderbook.signal_debug.connect(self.slot_debug)
+        self.orderbook.signal_debug.connect(self.signal_debug)
 
         if self.config.get_bool("gox", "use_plain_old_websocket"):
             self.client = WebsocketClient(self.currency, secret, config)
         else:
             self.client = SocketIOClient(self.currency, secret, config)
-        self.client.signal_debug.connect(self.slot_debug)
+        self.client.signal_debug.connect(self.signal_debug)
         self.client.signal_recv.connect(self.slot_recv)
-        self.client.signal_fulldepth.connect(self.slot_fulldepth)
-        self.client.signal_fullhistory.connect(self.slot_fullhistory)
+        self.client.signal_fulldepth.connect(self.signal_fulldepth)
+        self.client.signal_fullhistory.connect(self.signal_fullhistory)
 
     def start(self):
         """connect to MtGox and start receiving events."""
@@ -761,7 +776,7 @@ class Gox(BaseObject):
         }
         res = self.client.http_signed_call(endpoint, params)
         if "result" in res and res["result"] == "success":
-            self.signal_userorder.send(self,
+            self.signal_userorder(self,
                 (price, volume, typ, res["return"], "pending"))
             res = res["return"]
         else:
@@ -787,7 +802,7 @@ class Gox(BaseObject):
         }
         res = self.client.http_signed_call(endpoint, params)
         if "result" in res and res["result"] == "success":
-            self.signal_userorder.send(self,
+            self.signal_userorder(self,
                 (0, 0, "", res["return"], "removed"))
             res = True
         else:
@@ -814,18 +829,6 @@ class Gox(BaseObject):
             if typ == None or typ == order.typ:
                 if order.oid != "":
                     self.cancel(order.oid)
-
-    def slot_debug(self, sender, data):
-        """pass through the debug signals from child objects"""
-        self.signal_debug.send(sender, data)
-
-    def slot_fulldepth(self, sender, data):
-        """pass through the fulldepth signal from the client"""
-        self.signal_fulldepth.send(sender, data)
-
-    def slot_fullhistory(self, sender, data):
-        """slot for signal_fullhistory"""
-        self.signal_fullhistory.send(sender, data)
 
     def slot_recv(self, dummy_sender, (str_json)):
         """Slot for signal_recv, handle new incoming JSON message. Decode the
@@ -888,7 +891,7 @@ class Gox(BaseObject):
 
         self.debug(" tick:  bid:", int2str(bid, self.currency),
             "ask:", int2str(ask, self.currency))
-        self.signal_ticker.send(self, (bid, ask))
+        self.signal_ticker(self, (bid, ask))
 
     def _on_depth(self, msg):
         """handle incoming depth message"""
@@ -904,7 +907,7 @@ class Gox(BaseObject):
             "depth: ", type_str+":", int2str(price, self.currency),
             "vol:", int2str(volume, "BTC"),
             "now:", int2str(total_volume, "BTC"))
-        self.signal_depth.send(self, (type_str, price, volume, total_volume))
+        self.signal_depth(self, (type_str, price, volume, total_volume))
 
     def _on_trade(self, msg):
         """handle incoming trade mesage"""
@@ -924,7 +927,7 @@ class Gox(BaseObject):
             "vol:", int2str(volume, "BTC"),
             "type:", typ
         )
-        self.signal_trade.send(self, (date, price, volume, typ, own))
+        self.signal_trade(self, (date, price, volume, typ, own))
 
     def _on_call_result(self, msg):
         """handle result of authenticated API call"""
@@ -960,14 +963,14 @@ class Gox(BaseObject):
             for currency in gox_wallet:
                 self.wallet[currency] = int(
                     gox_wallet[currency]["Balance"]["value_int"])
-            self.signal_wallet.send(self, ())
+            self.signal_wallet(self, ())
             return
 
         if reqid == "order_lag":
             lag_usec = result["lag"]
             lag_text = result["lag_text"]
             self.order_lag = lag_usec
-            self.signal_orderlag.send(self, (lag_usec, lag_text))
+            self.signal_orderlag(self, (lag_usec, lag_text))
 
     def _on_user_order(self, msg):
         """handle incoming user_order message"""
@@ -979,11 +982,11 @@ class Gox(BaseObject):
                 volume = int(order["amount"]["value_int"])
                 typ = order["type"]
                 status = order["status"]
-                self.signal_userorder.send(self,
+                self.signal_userorder(self,
                     (price, volume, typ, oid, status))
 
         else: # removed (filled or canceled)
-            self.signal_userorder.send(self, (0, 0, "", oid, "removed"))
+            self.signal_userorder(self, (0, 0, "", oid, "removed"))
 
     def _on_wallet(self, dummy_msg):
         """handle incoming wallet message"""
@@ -1045,7 +1048,7 @@ class OrderBook(BaseObject):
             self.bids.pop(0)
 
         if change:
-            self.signal_changed.send(self, ())
+            self.signal_changed(self, ())
 
     def slot_depth(self, dummy_sender, (typ, price, dummy_voldiff, total_vol)):
         """Slot for signal_depth, process incoming depth message"""
@@ -1088,7 +1091,7 @@ class OrderBook(BaseObject):
             update_list(self.asks, price, total_vol, "ask")
         if typ == "bid":
             update_list(self.bids, price, total_vol, "bid")
-        self.signal_changed.send(self, ())
+        self.signal_changed(self, ())
 
     def slot_trade(self, dummy_sender,
         (dummy_date, price, volume, typ, own)):
@@ -1125,7 +1128,7 @@ class OrderBook(BaseObject):
             if len(self.bids):
                 self.bid = self.bids[0].price
 
-        self.signal_changed.send(self, ())
+        self.signal_changed(self, ())
 
     def slot_user_order(self, dummy_sender, (price, volume, typ, oid, status)):
         """Slot for signal_userorder, process incoming user_order mesage"""
@@ -1159,7 +1162,7 @@ class OrderBook(BaseObject):
                     "status:", status)
                 self.owns.append(Order(price, volume, typ, oid, status))
 
-        self.signal_changed.send(self, ())
+        self.signal_changed(self, ())
 
     def slot_fulldepth(self, dummy_sender, (depth)):
         """Slot for signal_fulldepth, process received fulldepth data.
@@ -1179,7 +1182,7 @@ class OrderBook(BaseObject):
             volume = int(order["amount_int"])
             self.bids.insert(0, Order(price, volume, "bid"))
 
-        self.signal_changed.send(self, ())
+        self.signal_changed(self, ())
 
     def get_own_volume_at(self, price):
         """returns the sum of the volume of own orders at a given price"""
@@ -1192,7 +1195,7 @@ class OrderBook(BaseObject):
     def reset_own(self):
         """clear all own orders"""
         self.owns = []
-        self.signal_changed.send(self, ())
+        self.signal_changed(self, ())
 
     def add_own(self, order):
         """add order to the list of own orders. This method is used
@@ -1229,4 +1232,4 @@ class OrderBook(BaseObject):
         if order.typ == "bid":
             insert_dummy(self.bids, False)
 
-        self.signal_changed.send(self, ())
+        self.signal_changed(self, ())

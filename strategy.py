@@ -9,7 +9,7 @@ class Strategy(goxapi.BaseObject):
 
     def __init__(self, gox):
         goxapi.BaseObject.__init__(self)
-        self.signal_debug.connect(gox.slot_debug)
+        self.signal_debug.connect(gox.signal_debug)
         gox.signal_ticker.connect(self.slot_tick)
         gox.signal_depth.connect(self.slot_depth)
         gox.signal_trade.connect(self.slot_trade)
