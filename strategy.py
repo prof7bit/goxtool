@@ -10,6 +10,7 @@ class Strategy(goxapi.BaseObject):
     def __init__(self, gox):
         goxapi.BaseObject.__init__(self)
         self.signal_debug.connect(gox.signal_debug)
+        gox.signal_keypress.connect(self.slot_keypress)
         gox.signal_ticker.connect(self.slot_tick)
         gox.signal_depth.connect(self.slot_depth)
         gox.signal_trade.connect(self.slot_trade)
@@ -19,13 +20,9 @@ class Strategy(goxapi.BaseObject):
     def on_before_unload(self, gox):
         self.debug("### strategy will be unloaded")
 
-    def on_key_b(self, gox):
-        self.debug("### someone pressed the b key")
 
-
-    def on_key_s(self, gox):
-        self.debug("### someone pressed the s key")
-
+    def slot_keypress(self, gox, (key)):
+        self.debug("someone pressed the %s key" % chr(key))
 
     def slot_tick(self, gox, (bid, ask)):
         pass

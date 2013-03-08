@@ -21,7 +21,7 @@ framework for experimenting with trading bots
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0301,R0912
+# pylint: disable=C0301,R0903,R0912
 
 import argparse
 import curses
@@ -476,6 +476,8 @@ class WinTst(Win):
     def paint(self):
         self.win.erase()
 
+
+
 #
 #
 # logging
@@ -493,6 +495,8 @@ def logging_init(gox):
                        ,level=logging.DEBUG
                        )
     gox.signal_debug.connect(slot_debug)
+
+
 
 #
 #
@@ -527,20 +531,6 @@ class StrategyManager():
                 % self.strategy_module_name)
             self.gox.debug("### running without strategy module")
 
-
-    def call_key(self, key):
-        """try to call the on_key_* method in the strategymodule if it exists"""
-        try:
-            method = getattr(self.strategy_object, "on_key_%s" % key)
-            try:
-                method(self.gox)
-
-            # pylint: disable=W0703
-            except Exception:
-                self.gox.debug(traceback.format_exc())
-
-        except AttributeError:
-            self.gox.debug("### no handler defined for key: '%s'" % key)
 
 
 #
@@ -583,7 +573,7 @@ def main():
                 strategy_manager.reload()
                 continue
             if key > ord("a") and key < ord("z"):
-                strategy_manager.call_key(chr(key))
+                gox.signal_keypress(gox, (key))
 #            if key == curses.KEY_F8:
 #                gox.debug("foo")
 #                dummy_blub = WinTst(stdscr, gox)
@@ -604,7 +594,7 @@ def main():
     config = goxapi.GoxConfig("goxtool.ini")
     secret = goxapi.Secret(config)
     if args.add_secret:
-        # prompt for secret, encrypt and exit
+        # prompt for secret, encrypt, write to .ini and then exit the program
         secret.prompt_encrypt()
     else:
         strat_mod_name = args.strategy.replace(".py", "")

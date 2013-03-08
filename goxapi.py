@@ -734,6 +734,7 @@ class Gox(BaseObject):
         self.signal_wallet          = Signal()
         self.signal_userorder       = Signal()
         self.signal_orderlag        = Signal()
+        self.signal_keypress        = Signal()
 
         self._idkey      = ""
         self.wallet = {}
