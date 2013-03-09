@@ -28,6 +28,8 @@ import hmac
 import inspect
 import json
 import logging
+import os
+import struct
 import time
 import traceback
 import threading
@@ -573,7 +575,7 @@ class BaseClient(BaseObject):
         key = self.secret.key
         sec = self.secret.secret
 
-        params["nonce"] = int(time.time() * 1000000)
+        params["nonce"] = struct.unpack('Q', os.urandom(8))
         post = urllib.urlencode(params)
         # pylint: disable=E1101
         sign = hmac.new(base64.b64decode(sec), post, hashlib.sha512).digest()
@@ -600,7 +602,7 @@ class BaseClient(BaseObject):
         key = self.secret.key
         sec = self.secret.secret
 
-        nonce = int(time.time() * 1000000)
+        nonce = struct.unpack('Q', os.urandom(8))
 
         call = json.dumps({
             "id"       : reqid,
@@ -1116,62 +1118,16 @@ class OrderBook(BaseObject):
         """Slot for signal_ticker, incoming ticker message"""
         self.bid = bid
         self.ask = ask
-        change = False
-        while len(self.asks) and self.asks[0].price < ask:
-            change = True
-            self.asks.pop(0)
+        self._repair_crossed_asks(ask)
+        self._repair_crossed_bids(bid)
+        self.signal_changed(self, ())
 
-        while len(self.bids) and self.bids[0].price > bid:
-            change = True
-            self.bids.pop(0)
-
-        if change:
-            self.signal_changed(self, ())
-
-    def slot_depth(self, dummy_sender, (typ, price, voldiff, total_vol)):
+    def slot_depth(self, dummy_sender, (typ, price, _voldiff, total_vol)):
         """Slot for signal_depth, process incoming depth message"""
-        # pylint: disable=R0912
-
-        def must_insert_before(existing, new, typ):
-            """compare existing and new order, depending on whether it is
-            a bid or an ask (bids are sorted highest first) we must do
-            a different comparison to find either the first higher ask
-            in the list or the first lower bid"""
-            if typ == "ask":
-                return (existing > new)
-            else:
-                return (existing < new)
-
-        def update_list(lst, price, total_vol, typ):
-            """update the list (either bids or asks), insert an order
-            at that price or update the volume at that price or remove
-            it if the total volume at that price reaches zero"""
-            cnt = len(lst)
-            if total_vol > 0:
-                for i in range(cnt):
-                    if lst[i].price == price:
-                        lst[i].volume = total_vol
-                        break
-                    if must_insert_before(lst[i].price, price, typ):
-                        lst.insert(i, Order(price, total_vol, typ))
-                        break
-                    if i == cnt - 1:
-                        lst.append(Order(price, total_vol, typ))
-                if cnt == 0:
-                    lst.insert(0, Order(price, total_vol, typ))
-            else:
-                for i in range(cnt):
-                    if lst[i].price == price:
-                        lst.pop(i)
-                        break
-
         if typ == "ask":
-            update_list(self.asks, price, total_vol, "ask")
-            self.total_ask += int2float(voldiff, "BTC")
+            self._update_asks(price, total_vol)
         if typ == "bid":
-            update_list(self.bids, price, total_vol, "bid")
-            self.total_bid += \
-                int2float(voldiff, "BTC") * int2float(price, self.gox.currency)
+            self._update_bids(price, total_vol)
         self.signal_changed(self, ())
 
     def slot_trade(self, dummy_sender,
@@ -1181,36 +1137,43 @@ class OrderBook(BaseObject):
         once during the normal public trade message, affecting the public
         bids and asks and then another time with own=True to update our
         own orders list"""
-
-        def update_list(lst, price, volume):
-            """find the order in the list, update it or remove it if zero."""
-            for i in range(len(lst)):
-                if lst[i].price == price:
-                    lst[i].volume -= volume
-                    if lst[i].volume <= 0:
-                        lst.pop(i)
-                    break
-
         if own:
             self.debug("### this trade message affects only our own order")
-            update_list(self.owns, price, volume)
-        else:
-            if typ == "bid":  # tryde_type=bid means an ask order was filled
-                while len(self.asks) and self.asks[0].price < price:
-                    self.asks.pop(0)
-                update_list(self.asks, price, volume)
-                self.total_ask -= int2float(volume, "BTC")
-            if typ == "ask":  # trade_type=ask means a bid order was filled
-                while len(self.bids) and self.bids[0].price > price:
-                    self.bids.pop(0)
-                update_list(self.bids, price, volume)
-                self.total_bid -= \
-                    int2float(volume, "BTC") * int2float(price, self.gox.currency)
+            for i in range(len(self.owns)):
+                # FIXME: this is broken, what if I have many orders at
+                # the same price? how do I know which one? Do I need to
+                # do this at all?
+                if self.owns[i].price == price:
+                    self.owns[i].volume -= volume
+                    if self.owns[i].volume <= 0:
+                        self.owns.pop(i)
+                    break
 
-            if len(self.asks):
-                self.ask = self.asks[0].price
-            if len(self.bids):
-                self.bid = self.bids[0].price
+        else:
+            voldiff = -volume
+            if typ == "bid":  # tryde_type=bid means an ask order was filled
+                self._repair_crossed_asks(price)
+                if len(self.asks):
+                    if self.asks[0].price == price:
+                        self.asks[0].volume -= volume
+                        if self.asks[0].volume <= 0:
+                            voldiff -= self.asks[0].volume
+                            self.asks.pop(0)
+                            self._update_total_ask(voldiff)
+                if len(self.asks):
+                    self.ask = self.asks[0].price
+
+            if typ == "ask":  # trade_type=ask means a bid order was filled
+                self._repair_crossed_bids(price)
+                if len(self.bids):
+                    if self.bids[0].price == price:
+                        self.bids[0].volume -= volume
+                        if self.bids[0].volume <= 0:
+                            voldiff -= self.bids[0].volume
+                            self.bids.pop(0)
+                            self._update_total_bid(voldiff, price)
+                if len(self.bids):
+                    self.ask = self.asks[0].price
 
         self.signal_changed(self, ())
 
@@ -1262,16 +1225,94 @@ class OrderBook(BaseObject):
         for order in depth["return"]["asks"]:
             price = int(order["price_int"])
             volume = int(order["amount_int"])
-            self.total_ask += int2float(volume, "BTC")
+            self._update_total_ask(volume)
             self.asks.append(Order(price, volume, "ask"))
         for order in depth["return"]["bids"]:
             price = int(order["price_int"])
             volume = int(order["amount_int"])
-            self.total_bid += \
-                int2float(volume, "BTC") * int2float(price, self.gox.currency)
+            self._update_total_bid(volume, price)
             self.bids.insert(0, Order(price, volume, "bid"))
 
         self.signal_changed(self, ())
+
+    def _repair_crossed_bids(self, bid):
+        """remove all bids that are higher that official current bid value,
+        this should actually never be necessary if their feed would not
+        eat depth- and trade-messages occaionally :-("""
+        while len(self.bids) and self.bids[0].price > bid:
+            price = self.bids[0].price
+            volume = self.bids[0].volume
+            self._update_total_bid(-volume, price)
+            self.bids.pop(0)
+
+    def _repair_crossed_asks(self, ask):
+        """remove all asks that are lower that official current ask value,
+        this should actually never be necessary if their feed would not
+        eat depth- and trade-messages occaionally :-("""
+        while len(self.asks) and self.asks[0].price < ask:
+            volume = self.asks[0].volume
+            self._update_total_ask(-volume)
+            self.asks.pop(0)
+
+    def _update_asks(self, price, total_vol):
+        """update volume at this price level, remove entire level
+        if empty after update, add new level if needed."""
+        for i in range(len(self.asks)):
+            level = self.asks[i]
+            if level.price == price:
+                # update existing level
+                voldiff = level.volume - total_vol
+                if total_vol == 0:
+                    self.asks.pop(i)
+                else:
+                    level.volume = total_vol
+                self._update_total_ask(voldiff)
+                return
+            if level.price > price:
+                # insert before here and return
+                lnew = Order(price, total_vol, "ask")
+                self.asks.insert(i, lnew)
+                self._update_total_ask(total_vol)
+                return
+
+        # still here? -> end of list or empty list.
+        lnew = Order(price, total_vol, "ask")
+        self.asks.append(lnew)
+        self._update_total_ask(total_vol)
+
+    def _update_bids(self, price, total_vol):
+        """update volume at this price level, remove entire level
+        if empty after update, add new level if needed."""
+        for i in range(len(self.bids)):
+            level = self.bids[i]
+            if level.price == price:
+                # update existing level
+                voldiff = level.volume - total_vol
+                if total_vol == 0:
+                    self.bids.pop(i)
+                else:
+                    level.volume = total_vol
+                self._update_total_bid(voldiff, price)
+                return
+            if level.price < price:
+                # insert before here and return
+                lnew = Order(price, total_vol, "ask")
+                self.bids.insert(i, lnew)
+                self._update_total_bid(total_vol, price)
+                return
+
+        # still here? -> end of list or empty list.
+        lnew = Order(price, total_vol, "ask")
+        self.bids.append(lnew)
+        self._update_total_bid(total_vol, price)
+
+    def _update_total_ask(self, volume):
+        """update total BTC on the ask side"""
+        self.total_ask += int2float(volume, "BTC")
+
+    def _update_total_bid(self, volume, price):
+        """update total fiat on the bid side"""
+        self.total_bid += int2float(volume, "BTC") * int2float(price, self.gox.currency)
 
     def get_own_volume_at(self, price):
         """returns the sum of the volume of own orders at a given price"""
