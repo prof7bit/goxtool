@@ -36,6 +36,10 @@ import urllib2
 import weakref
 import websocket
 
+FORCE_PROTOCOL = ""
+FORCE_NO_FULLDEPTH = False
+FORCE_NO_HISTORY = False
+
 def int2str(value_int, currency):
     """return currency integer formatted as a string"""
     if currency == "BTC":
@@ -44,6 +48,16 @@ def int2str(value_int, currency):
         return ("%12.3f" % (value_int / 1000.0))
     else:
         return ("%12.5f" % (value_int / 100000.0))
+
+def int2float(value_int, currency):
+    """return currency integer formatted as a string"""
+    if currency == "BTC":
+        return value_int / 100000000.0
+    if currency == "JPY":
+        return value_int / 1000.0
+    else:
+        return value_int / 100000.0
+
 
 def start_thread(thread_func):
     """start a new thread to execute the supplied function"""
@@ -461,6 +475,9 @@ class BaseClient(BaseObject):
         self._recv_thread = None
         self._terminating = False
 
+        self._time_last_orderlag = 0
+        self.signal_recv.connect(self.slot_recv)
+
     def start(self):
         """start the client"""
         self._recv_thread = start_thread(self._recv_thread_func)
@@ -468,8 +485,10 @@ class BaseClient(BaseObject):
     def stop(self):
         """stop the client"""
         self._terminating = True
-        self.socket.close()
-        self._recv_thread.join()
+        if self.socket:
+            self.debug("""closing socket""")
+            self.socket.sock.close()
+        #self._recv_thread.join()
 
     def send(self, json_str):
         """there exist 2 subtly different ways to send a string over a
@@ -479,6 +498,7 @@ class BaseClient(BaseObject):
     def request_order_lag(self):
         """request the current order-lag"""
         self.send_signed_call("order/lag", {}, "order_lag")
+        self._time_last_orderlag = time.time()
 
     def request_fulldepth(self):
         """start the fulldepth thread"""
@@ -519,6 +539,11 @@ class BaseClient(BaseObject):
         client (websocket or socketio) will implement its own"""
         raise NotImplementedError()
 
+    def slot_recv(self, dummy_sender, dummy_data):
+        """do stuff in regular intervals"""
+        if time.time() - self._time_last_orderlag > 60:
+            self.request_order_lag()
+
     def channel_subscribe(self):
         """subscribe to the needed channels and alo initiate the
         download of the initial full market depth"""
@@ -531,13 +556,13 @@ class BaseClient(BaseObject):
         self.send_signed_call("private/orders", {}, "orders")
         self.send_signed_call("private/idkey", {}, "idkey")
 
-        self.request_order_lag()
-
         if self.config.get_bool("gox", "load_fulldepth"):
-            self.request_fulldepth()
+            if not FORCE_NO_FULLDEPTH:
+                self.request_fulldepth()
 
         if self.config.get_bool("gox", "load_history"):
-            self.request_history()
+            if not FORCE_NO_HISTORY:
+                self.request_history()
 
     def http_signed_call(self, api_endpoint, params):
         """send a signed request to the HTTP API"""
@@ -620,7 +645,8 @@ class WebsocketClient(BaseClient):
                 self.debug("*** Hint: connection problems? try: use_plain_old_websocket=False")
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
-                self.socket = websocket.create_connection(ws_url)
+                self.socket = websocket.WebSocket()
+                self.socket.connect(ws_url)
                 self.debug("connected, subscribing needed channels")
                 self.channel_subscribe()
 
@@ -676,7 +702,8 @@ class SocketIOClient(BaseClient):
                      + ws_id + "?Currency=" + self.currency
 
                 self.debug("trying Websocket: %s ..." % ws_url)
-                self.socket = websocket.create_connection(ws_url)
+                self.socket = websocket.WebSocket()
+                self.socket.connect(ws_url)
 
                 self.debug("connected")
                 self.socket.send("1::/mtgox")
@@ -739,7 +766,6 @@ class Gox(BaseObject):
         self._idkey      = ""
         self.wallet = {}
         self.order_lag = 0
-        self.msg_count = 0
 
         self.config = config
         self.currency = config.get("gox", "currency", "USD")
@@ -752,7 +778,12 @@ class Gox(BaseObject):
         self.orderbook = OrderBook(self)
         self.orderbook.signal_debug.connect(self.signal_debug)
 
-        if self.config.get_bool("gox", "use_plain_old_websocket"):
+        use_websocket = self.config.get_bool("gox", "use_plain_old_websocket")
+        if FORCE_PROTOCOL == "socketio":
+            use_websocket = False
+        if FORCE_PROTOCOL == "websocket":
+            use_websocket = True
+        if use_websocket:
             self.client = WebsocketClient(self.currency, secret, config)
         else:
             self.client = SocketIOClient(self.currency, secret, config)
@@ -807,73 +838,105 @@ class Gox(BaseObject):
         """Slot for signal_recv, handle new incoming JSON message. Decode the
         JSON string into a Python object and dispatch it to the method that
         can handle it."""
+        handler = None
+        msg = json.loads(str_json)
+        if "op" in msg:
+            try:
+                msg_op = msg["op"]
+                handler = getattr(self, "_on_op_" + msg_op)
+
+            except AttributeError:
+                self.debug("slot_recv() ignoring: op=%s" % msg_op)
+        else:
+            self.debug("slot_recv() ignoring:", msg)
+
+        if handler:
+            handler(msg)
+
+    def _on_op_error(self, msg):
+        """handle error mesages (op=error)"""
+        self.debug("_on_op_error()", msg)
+
+    def _on_op_result(self, msg):
+        """handle result of authenticated API call (op=result, id=xxxxxx)"""
+        result = msg["result"]
+        reqid = msg["id"]
+
+        if reqid == "idkey":
+            self.debug("### got key, subscribing to account messages")
+            self._idkey = result
+            self.client.send(json.dumps({"op":"mtgox.subscribe", "key":result}))
+
+        elif reqid == "orders":
+            self.debug("### got own order list")
+            self.orderbook.reset_own()
+            for order in result:
+                if order["currency"] == self.currency:
+                    self.orderbook.add_own(Order(
+                        int(order["price"]["value_int"]),
+                        int(order["amount"]["value_int"]),
+                        order["type"],
+                        order["oid"],
+                        order["status"]
+                    ))
+            self.debug("### have %d own orders for BTC/%s" %
+                (len(self.orderbook.owns), self.currency))
+
+        elif reqid == "info":
+            self.debug("### got account info")
+            gox_wallet = result["Wallets"]
+            self.wallet = {}
+            for currency in gox_wallet:
+                self.wallet[currency] = int(
+                    gox_wallet[currency]["Balance"]["value_int"])
+            self.signal_wallet(self, ())
+
+        elif reqid == "order_lag":
+            lag_usec = result["lag"]
+            lag_text = result["lag_text"]
+            self.order_lag = lag_usec
+            self.signal_orderlag(self, (lag_usec, lag_text))
+
+        elif "order_add:" in reqid:
+            # order/add has been acked and we got an oid, now we can already
+            # insert a pending order into the owns list (it will be pending
+            # for a while when the server is busy but the most important thing
+            # is that we have the order-id already).
+            parts = reqid.split(":")
+            typ = parts[1]
+            price = int(parts[2])
+            volume = int(parts[3])
+            oid = result
+            self.debug("order/add has been acked by server:", typ, price, volume, oid)
+            self.orderbook.add_own(Order(price, volume, typ, oid, "pending"))
+
+        elif "order_cancel:" in reqid:
+            # cancel request has been acked but we won't remove it from our
+            # own list now because it is still active on the server.
+            # do nothing now, let things happen in the user_order message
+            parts = reqid.split(":")
+            oid = parts[1]
+            self.debug("order/cancel has been acked by server:", oid)
+
+        else:
+            self.debug("_on_op_result() ignoring:", msg)
+
+    def _on_op_private(self, msg):
+        """handle op=private messages, these are the messages of the channels
+        we subscribed (trade, depth, ticker) and also the per-account messages
+        (user_order, wallet, own trades, etc)"""
+        private = msg["private"]
+        handler = None
         try:
-            msg = json.loads(str_json)
-            if "ticker" in msg:
-                self._on_tick(msg)
-            if "depth" in msg:
-                self._on_depth(msg)
-            if "trade" in msg:
-                self._on_trade(msg)
-            if "result" in msg:
-                self._on_call_result(msg)
-            if "user_order" in msg:
-                self._on_user_order(msg)
-            if "wallet" in msg:
-                self._on_wallet(msg)
+            handler = getattr(self, "_on_op_private_" + private)
+        except AttributeError:
+            self.debug("_on_op_private() ignoring: private=%s" % private)
 
-            if "op" in msg and msg["op"] == "remark":
-                # we should log this, helps with debugging
-                self.debug(str_json)
+        if handler:
+            handler(msg)
 
-                # Workaround: Maybe a bug in their server software,
-                # I don't know whats missing. Its all poorly documented :-(
-                # Sometimes these API calls fail the first time for no reason,
-                # if this happens just send them again. This happens only
-                # somtimes (10%) and sending them again will eventually succeed.
-                if "success" in msg and "id" in msg and not msg["success"]:
-                    if msg["message"] == "Invalid call":
-                        if msg["id"] == "idkey":
-                            self.debug("### resending private/idkey")
-                            self.client.send_signed_call(
-                                "private/idkey", {}, "idkey")
-                        if msg["id"] == "info":
-                            self.debug("### resending private/info")
-                            self.client.send_signed_call(
-                                "private/info", {}, "info")
-                        if msg["id"] == "orders":
-                            self.debug("### resending private/orders")
-                            self.client.send_signed_call(
-                                "private/orders", {}, "orders")
-
-                        # resend a failed "order/add"
-                        if "order_add:" in msg["id"]:
-                            parts = msg["id"].split(":")
-                            typ = parts[1]
-                            price = int(parts[2])
-                            volume = int(parts[3])
-                            self.debug("### resending failed", msg["id"])
-                            self._send_order_add(typ, price, volume)
-
-                        # resend a failed "order/cancel"
-                        if "order_cancel:" in msg["id"]:
-                            parts = msg["id"].split(":")
-                            oid = parts[1]
-                            self.debug("### resending failed", msg["id"])
-                            self._send_order_cancel(oid)
-
-
-
-        # pylint: disable=W0703
-        except Exception:
-            self.debug(traceback.format_exc())
-
-        self.msg_count += 1
-        if (self.msg_count % 200) == 0:
-            self.client.request_order_lag()
-
-    def _on_tick(self, msg):
-        """handle incoming ticker message"""
+    def _on_op_private_ticker(self, msg):
+        """handle incoming ticker message (op=private, private=ticker)"""
         msg = msg["ticker"]
         if msg["sell"]["currency"] != self.currency:
             return
@@ -884,8 +947,8 @@ class Gox(BaseObject):
             "ask:", int2str(ask, self.currency))
         self.signal_ticker(self, (bid, ask))
 
-    def _on_depth(self, msg):
-        """handle incoming depth message"""
+    def _on_op_private_depth(self, msg):
+        """handle incoming depth message (op=private, private=depth)"""
         msg = msg["depth"]
         if msg["currency"] != self.currency:
             return
@@ -900,8 +963,8 @@ class Gox(BaseObject):
             "now:", int2str(total_volume, "BTC"))
         self.signal_depth(self, (type_str, price, volume, total_volume))
 
-    def _on_trade(self, msg):
-        """handle incoming trade mesage"""
+    def _on_op_private_trade(self, msg):
+        """handle incoming trade mesage (op=private, private=trade)"""
         if msg["trade"]["price_currency"] != self.currency:
             return
         if msg["channel"] == "dbf1dee9-4f2e-4a08-8cb7-748919a71b21":
@@ -920,66 +983,8 @@ class Gox(BaseObject):
         )
         self.signal_trade(self, (date, price, volume, typ, own))
 
-    def _on_call_result(self, msg):
-        """handle result of authenticated API call"""
-        result = msg["result"]
-        reqid = msg["id"]
-
-        if reqid == "idkey":
-            self.debug("### got key, subscribing to account messages")
-            self._idkey = result
-            self.client.send(json.dumps({"op":"mtgox.subscribe", "key":result}))
-            return
-
-        if reqid == "orders":
-            self.debug("### got own order list")
-            self.orderbook.reset_own()
-            for order in result:
-                if order["currency"] == self.currency:
-                    self.orderbook.add_own(Order(
-                        int(order["price"]["value_int"]),
-                        int(order["amount"]["value_int"]),
-                        order["type"],
-                        order["oid"],
-                        order["status"]
-                    ))
-            self.debug("### have %d own orders for BTC/%s" %
-                (len(self.orderbook.owns), self.currency))
-            return
-
-        if reqid == "info":
-            self.debug("### got account info")
-            gox_wallet = result["Wallets"]
-            self.wallet = {}
-            for currency in gox_wallet:
-                self.wallet[currency] = int(
-                    gox_wallet[currency]["Balance"]["value_int"])
-            self.signal_wallet(self, ())
-            return
-
-        if reqid == "order_lag":
-            lag_usec = result["lag"]
-            lag_text = result["lag_text"]
-            self.order_lag = lag_usec
-            self.signal_orderlag(self, (lag_usec, lag_text))
-
-        if "order_add:" in reqid:
-            parts = reqid.split(":")
-            typ = parts[1]
-            price = int(parts[2])
-            volume = int(parts[3])
-            oid = result
-            self.orderbook.add_own(Order(price, volume, typ, oid, "pending"))
-
-        if "order_cancel:" in reqid:
-            # cancel request has been received but we won't remove it from our
-            # own list now because it is still active on the server.
-            # do nothing now, let things happen in the user_order message
-            pass
-
-
-    def _on_user_order(self, msg):
-        """handle incoming user_order message"""
+    def _on_op_private_user_order(self, msg):
+        """handle incoming user_order message (op=private, private=user_order)"""
         order = msg["user_order"]
         oid = order["oid"]
         if "price" in order:
@@ -994,11 +999,60 @@ class Gox(BaseObject):
         else: # removed (filled or canceled)
             self.signal_userorder(self, (0, 0, "", oid, "removed"))
 
-    def _on_wallet(self, dummy_msg):
-        """handle incoming wallet message"""
+    def _on_op_private_wallet(self, dummy_msg):
+        """handle incoming wallet message (op=private, private=wallet)"""
         # I am lazy, just sending a new info request,
-        # so it will update automatically.
+        # so it will update during its op=result.
         self.client.send_signed_call("private/info", {}, "info")
+
+    def _on_op_remark(self, msg):
+        """handler for op=remark messages"""
+        # we should log this, helps with debugging
+        self.debug(msg)
+
+        if "success" in msg and not msg["success"]:
+            if msg["message"] == "Invalid call":
+                self._on_invalid_call(msg)
+
+    def _on_invalid_call(self, msg):
+        """this comes as an op=remark message and is a strange mystery"""
+        # Workaround: Maybe a bug in their server software,
+        # I don't know whats missing. Its all poorly documented :-(
+        # Sometimes some API calls fail the first time for no reason,
+        # if this happens just send them again. This happens only
+        # somtimes (10%) and sending them again will eventually succeed.
+
+        if msg["id"] == "idkey":
+            self.debug("### resending private/idkey")
+            self.client.send_signed_call(
+                "private/idkey", {}, "idkey")
+
+        elif msg["id"] == "info":
+            self.debug("### resending private/info")
+            self.client.send_signed_call(
+                "private/info", {}, "info")
+
+        elif msg["id"] == "orders":
+            self.debug("### resending private/orders")
+            self.client.send_signed_call(
+                "private/orders", {}, "orders")
+
+        elif "order_add:" in msg["id"]:
+            parts = msg["id"].split(":")
+            typ = parts[1]
+            price = int(parts[2])
+            volume = int(parts[3])
+            self.debug("### resending failed", msg["id"])
+            self._send_order_add(typ, price, volume)
+
+        elif "order_cancel:" in msg["id"]:
+            parts = msg["id"].split(":")
+            oid = parts[1]
+            self.debug("### resending failed", msg["id"])
+            self._send_order_cancel(oid)
+
+        else:
+            self.debug("_on_invalid_call() ignoring:", msg)
 
 
     def _send_order_add(self, typ, price, volume):
@@ -1055,6 +1109,8 @@ class OrderBook(BaseObject):
 
         self.bid = 0
         self.ask = 0
+        self.total_bid = 0
+        self.total_ask = 0
 
     def slot_ticker(self, dummy_sender, (bid, ask)):
         """Slot for signal_ticker, incoming ticker message"""
@@ -1072,7 +1128,7 @@ class OrderBook(BaseObject):
         if change:
             self.signal_changed(self, ())
 
-    def slot_depth(self, dummy_sender, (typ, price, dummy_voldiff, total_vol)):
+    def slot_depth(self, dummy_sender, (typ, price, voldiff, total_vol)):
         """Slot for signal_depth, process incoming depth message"""
         # pylint: disable=R0912
 
@@ -1111,8 +1167,11 @@ class OrderBook(BaseObject):
 
         if typ == "ask":
             update_list(self.asks, price, total_vol, "ask")
+            self.total_ask += int2float(voldiff, "BTC")
         if typ == "bid":
             update_list(self.bids, price, total_vol, "bid")
+            self.total_bid += \
+                int2float(voldiff, "BTC") * int2float(price, self.gox.currency)
         self.signal_changed(self, ())
 
     def slot_trade(self, dummy_sender,
@@ -1140,10 +1199,13 @@ class OrderBook(BaseObject):
                 while len(self.asks) and self.asks[0].price < price:
                     self.asks.pop(0)
                 update_list(self.asks, price, volume)
+                self.total_ask -= int2float(volume, "BTC")
             if typ == "ask":  # trade_type=ask means a bid order was filled
                 while len(self.bids) and self.bids[0].price > price:
                     self.bids.pop(0)
                 update_list(self.bids, price, volume)
+                self.total_bid -= \
+                    int2float(volume, "BTC") * int2float(price, self.gox.currency)
 
             if len(self.asks):
                 self.ask = self.asks[0].price
@@ -1192,16 +1254,21 @@ class OrderBook(BaseObject):
         self.debug("### got full depth: updating orderbook...")
         self.bids = []
         self.asks = []
+        self.total_ask = 0
+        self.total_bid = 0
         if "error" in depth:
             self.debug("### ", depth["error"])
             return
         for order in depth["return"]["asks"]:
             price = int(order["price_int"])
             volume = int(order["amount_int"])
+            self.total_ask += int2float(volume, "BTC")
             self.asks.append(Order(price, volume, "ask"))
         for order in depth["return"]["bids"]:
             price = int(order["price_int"])
             volume = int(order["amount_int"])
+            self.total_bid += \
+                int2float(volume, "BTC") * int2float(price, self.gox.currency)
             self.bids.insert(0, Order(price, volume, "bid"))
 
         self.signal_changed(self, ())

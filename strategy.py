@@ -15,10 +15,11 @@ class Strategy(goxapi.BaseObject):
         gox.signal_depth.connect(self.slot_depth)
         gox.signal_trade.connect(self.slot_trade)
         gox.signal_userorder.connect(self.slot_userorder)
-        self.debug("### strategy loaded")
+        self.name = "%s.%s" % (__name__, self.__class__.__name__)
+        self.debug("%s loaded" % self.name)
 
-    def on_before_unload(self, gox):
-        self.debug("### strategy will be unloaded")
+    def __del__(self):
+        self.debug("%s unloading" % self.name)
 
 
     def slot_keypress(self, gox, (key)):

@@ -21,14 +21,16 @@ framework for experimenting with trading bots
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0301,R0903,R0912
+# pylint: disable=C0301,R0903,R0912,R0915
 
 import argparse
 import curses
 import curses.panel
 import goxapi
 import logging
+import locale
 import math
+import sys
 import traceback
 
 
@@ -422,8 +424,9 @@ class WinStatus(Win):
         self.gox = gox
         self.order_lag = 0
         self.order_lag_txt = ""
-        gox.signal_wallet.connect(self.slot_status_changed)
         gox.signal_orderlag.connect(self.slot_orderlag)
+        gox.signal_wallet.connect(self.slot_changed)
+        gox.orderbook.signal_changed.connect(self.slot_changed)
         Win.__init__(self, stdscr)
 
     def calc_size(self):
@@ -445,12 +448,23 @@ class WinStatus(Win):
         else:
             line1 += "No info (yet)"
 
-        line2 = "Order-lag: " + self.order_lag_txt
+        str_btc = locale.format('%d', self.gox.orderbook.total_ask, 1)
+        str_fiat = locale.format('%d', self.gox.orderbook.total_bid, 1)
+        if self.gox.orderbook.total_ask:
+            str_ratio = locale.format('%1.2f',
+                self.gox.orderbook.total_bid / self.gox.orderbook.total_ask, 1)
+        else:
+            str_ratio = "-"
+
+        line2 = "total bid: " + str_fiat + " " + self.gox.currency + " | "
+        line2 += "total ask: " +str_btc + " BTC | "
+        line2 += "ratio: " + str_ratio + " " + self.gox.currency + "/BTC | "
+        line2 += "order lag: " + self.order_lag_txt
         self.win.addstr(0, 0, line1, COLOR_PAIR["status_text"])
         self.win.addstr(1, 0, line2, COLOR_PAIR["status_text"])
 
 
-    def slot_status_changed(self, dummy_sender, dummy_data):
+    def slot_changed(self, dummy_sender, dummy_data):
         """the callback funtion called by the Gox() instance"""
         self.do_paint()
 
@@ -480,21 +494,50 @@ class WinTst(Win):
 
 #
 #
-# logging
+# logging, printing, etc...
 #
 
-def slot_debug(sender, (msg)):
-    """handler for signal_debug signals"""
-    logging.debug("%s:%s", sender.__class__.__name__, msg)
+class LogWriter():
+    """connects to gox.signal_debug and logs it all to the logfile"""
+    def __init__(self, gox):
+        self.gox = gox
+        logging.basicConfig(filename='goxtool.log'
+                           ,filemode='w'
+                           ,format='%(asctime)s:%(levelname)s:%(message)s'
+                           ,level=logging.DEBUG
+                           )
+        self.gox.signal_debug.connect(self.slot_debug)
 
-def logging_init(gox):
-    """initialize logger and connect to signal_debug signals"""
-    logging.basicConfig(filename='goxtool.log'
-                       ,filemode='w'
-                       ,format='%(asctime)s:%(levelname)s:%(message)s'
-                       ,level=logging.DEBUG
-                       )
-    gox.signal_debug.connect(slot_debug)
+    def close(self):
+        """stop logging"""
+        #not needed
+        pass
+
+    # pylint: disable=R0201
+    def slot_debug(self, sender, (msg)):
+        """handler for signal_debug signals"""
+        logging.debug("%s:%s", sender.__class__.__name__, msg)
+
+
+class PrintHook():
+    """intercept stdout/stderr and send it all to gox.signal_debug instead"""
+    def __init__(self, gox):
+        self.gox = gox
+        self.stdout = sys.stdout
+        self.stderr = sys.stderr
+        sys.stdout = self
+        sys.stderr = self
+
+    def close(self):
+        """restore normal stdio"""
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
+
+    def write(self, string):
+        """called when someone uses print(), send it to gox"""
+        string = string.strip()
+        if string != "":
+            self.gox.signal_debug(self, string)
 
 
 
@@ -512,13 +555,16 @@ class StrategyManager():
         self.gox = gox
         self.reload()
 
+    def unload(self):
+        """unload the strategy, will trigger its the __del__ method"""
+        self.strategy_object = None
+
     def reload(self):
         """reload and re-initialize the strategy module"""
         try:
             strategy_module = __import__(self.strategy_module_name)
             try:
-                if self.strategy_object:
-                    self.strategy_object.on_before_unload(self.gox)
+                self.unload()
                 reload(strategy_module)
                 self.strategy_object = strategy_module.Strategy(self.gox)
 
@@ -543,6 +589,7 @@ def main():
 
     def curses_loop(stdscr):
         """This code runs within curses environment"""
+
         init_colors()
 
         gox = goxapi.Gox(secret, config)
@@ -552,7 +599,8 @@ def main():
         statuswin = WinStatus(stdscr, gox)
         chartwin = WinChart(stdscr, gox)
 
-        logging_init(gox)
+        logwriter = LogWriter(gox)
+        printhook = PrintHook(gox)
         strategy_manager = StrategyManager(gox, strat_mod_name)
 
         gox.start()
@@ -578,8 +626,18 @@ def main():
 #                gox.debug("foo")
 #                dummy_blub = WinTst(stdscr, gox)
 
+        strategy_manager.unload()
         gox.stop()
+        printhook.close()
+        logwriter.close()
+        # The End.
 
+    for loc in ["en_US.UTF8", "en_GB.UTF8", "en_EN", "en_GB", "C"]:
+        try:
+            locale.setlocale(locale.LC_NUMERIC, loc)
+            break
+        except locale.Error:
+            continue
 
     # before we can finally start the curses UI we might need to do some user
     # interaction on the command line, regarding the encrypted secret
@@ -589,6 +647,12 @@ def main():
         help="prompt for API secret, encrypt it and then exit")
     argp.add_argument('--strategy', action="store", default="strategy.py",
         help="name of strategy module file, default=strategy.py")
+    argp.add_argument('--protocol', action="store", default="",
+        help="force protocol (socketio or websocket), ignore setting in .ini")
+    argp.add_argument('--no-fulldepth', action="store_true", default="",
+        help="do not download full depth (useful for debugging)")
+    argp.add_argument('--no-history', action="store_true", default="",
+        help="do not download full history (useful for debugging)")
     args = argp.parse_args()
 
     config = goxapi.GoxConfig("goxtool.ini")
@@ -598,6 +662,9 @@ def main():
         secret.prompt_encrypt()
     else:
         strat_mod_name = args.strategy.replace(".py", "")
+        goxapi.FORCE_PROTOCOL = args.protocol
+        goxapi.FORCE_NO_FULLDEPTH = args.no_fulldepth
+        goxapi.FORCE_NO_HISTORY = args.no_history
         if secret.prompt_decrypt() != secret.S_FAIL_FATAL:
             curses.wrapper(curses_loop)
             print
