@@ -1139,15 +1139,15 @@ class OrderBook(BaseObject):
         own orders list"""
         if own:
             self.debug("### this trade message affects only our own order")
-            for i in range(len(self.owns)):
-                # FIXME: this is broken, what if I have many orders at
-                # the same price? how do I know which one? Do I need to
-                # do this at all?
-                if self.owns[i].price == price:
-                    self.owns[i].volume -= volume
-                    if self.owns[i].volume <= 0:
-                        self.owns.pop(i)
-                    break
+            #for i in range(len(self.owns)):
+            #    # FIXME: this is broken, what if I have many orders at
+            #    # the same price? how do I know which one? Do I need to
+            #    # do this at all?
+            #    if self.owns[i].price == price:
+            #        self.owns[i].volume -= volume
+            #        if self.owns[i].volume <= 0:
+            #            self.owns.pop(i)
+            #        break
 
         else:
             voldiff = -volume
@@ -1261,7 +1261,7 @@ class OrderBook(BaseObject):
             level = self.asks[i]
             if level.price == price:
                 # update existing level
-                voldiff = level.volume - total_vol
+                voldiff = total_vol - level.volume
                 if total_vol == 0:
                     self.asks.pop(i)
                 else:
@@ -1287,7 +1287,7 @@ class OrderBook(BaseObject):
             level = self.bids[i]
             if level.price == price:
                 # update existing level
-                voldiff = level.volume - total_vol
+                voldiff = total_vol - level.volume
                 if total_vol == 0:
                     self.bids.pop(i)
                 else:
