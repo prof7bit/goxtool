@@ -21,7 +21,7 @@ framework for experimenting with trading bots
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0301,R0903,R0912,R0915
+# pylint: disable=C0301,R0902,R0903,R0912,R0913,R0915,R0922
 
 import argparse
 import curses
@@ -56,6 +56,11 @@ COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["chart_up",       curses.COLOR_BLACK,   curses.COLOR_GREEN]
             ,["chart_down",     curses.COLOR_BLACK,   curses.COLOR_RED]
             ,["order_pending",  curses.COLOR_BLACK,   curses.COLOR_BLUE]
+
+            ,["dialog_text",     curses.COLOR_BLUE,   curses.COLOR_CYAN]
+            ,["dialog_sel",      curses.COLOR_CYAN,   curses.COLOR_BLUE]
+            ,["dialog_sel_text", curses.COLOR_BLUE,   curses.COLOR_YELLOW]
+            ,["dialog_sel_sel",  curses.COLOR_YELLOW, curses.COLOR_BLUE]
             ]
 
 COLOR_PAIR = {}
@@ -86,6 +91,12 @@ class Win:
         self.win = None
         self.panel = None
         self.__create_win()
+
+    def __del__(self):
+        del self.panel
+        del self.win
+        curses.panel.update_panels()
+        curses.doupdate()
 
     def calc_size(self):
         """override this method to change posx, posy, width, height.
@@ -127,6 +138,7 @@ class Win:
         self.win = curses.newwin(self.height, self.width, self.posy, self.posx)
         self.panel = curses.panel.new_panel(self.win)
         self.win.scrollok(True)
+        self.win.keypad(1)
         self.do_paint()
 
     def __calc_size(self):
@@ -475,20 +487,160 @@ class WinStatus(Win):
         self.do_paint()
 
 
-class WinTst(Win):
-    """a curses experiment, incomplete code, ignore"""
-    def __init__(self, stdscr, gox):
-        self.gox = gox
+class DlgListItems(Win):
+    """dialog with a scrollable list of items"""
+    def __init__(self, stdscr, width, title, hlp, keys):
+        self.items = []
+        self.selected = []
+        self.item_top = 0
+        self.item_sel = 0
+        self.dlg_width = width
+        self.dlg_title = title
+        self.dlg_hlp = hlp
+        self.dlg_keys = keys
+        self.reserved_lines = 5  # how many lines NOT used for order list
+        self.init_items()
         Win.__init__(self, stdscr)
 
+    def init_items(self):
+        """initialize the items list, must override and implement this"""
+        raise NotImplementedError()
+
     def calc_size(self):
-        self.posx = 20
-        self.posy = 20
-        self.height = 19
-        self.width = 40
+        maxh = self.termheight - 4
+        self.height = len(self.items) + self.reserved_lines
+        if self.height > maxh:
+            self.height = maxh
+        self.posy = (self.termheight - self.height) / 2
+
+        self.width = self.dlg_width
+        self.posx = (self.termwidth - self.width) / 2
+
+    def paint_item(self, posx, index):
+        """paint the item. Must override and implement this"""
+        raise NotImplementedError()
 
     def paint(self):
+        self.win.bkgd(" ", COLOR_PAIR["dialog_text"])
         self.win.erase()
+        self.win.border()
+        self.win.addstr(0, 1, " %s " % self.dlg_title, COLOR_PAIR["dialog_text"])
+        index = self.item_top
+        posy = 2
+        while posy < self.height - 3 and index < len(self.items):
+            self.paint_item(posy, index)
+            index += 1
+            posy += 1
+
+        self.win.move(self.height - 2, 2)
+        for key, desc in self.dlg_hlp:
+            self.win.addstr(key + " ",  COLOR_PAIR["dialog_sel"])
+            self.win.addstr(desc + " ", COLOR_PAIR["dialog_text"])
+
+    def down(self, num):
+        """move the cursor down (or up)"""
+        if not len(self.items):
+            return
+        self.item_sel += num
+        if self.item_sel < 0:
+            self.item_sel = 0
+        if self.item_sel > len(self.items) - 1:
+            self.item_sel = len(self.items) - 1
+
+        last_line = self.height - 1 - self.reserved_lines
+        if self.item_sel < self.item_top:
+            self.item_top = self.item_sel
+        if self.item_sel - self.item_top > last_line:
+            self.item_top = self.item_sel - last_line
+
+        self.do_paint()
+
+    def toggle_select(self):
+        """toggle selection under cursor"""
+        if not len(self.items):
+            return
+        item = self.items[self.item_sel]
+        if item in self.selected:
+            self.selected.remove(item)
+        else:
+            self.selected.append(item)
+        self.do_paint()
+
+    def modal(self):
+        """run the modal getch-loop for this dialog"""
+        done = False
+        while not done:
+            key_pressed = self.win.getch()
+            if key_pressed in [ord("q"), curses.KEY_F10]:
+                done = True
+            if key_pressed == curses.KEY_DOWN:
+                self.down(1)
+            if key_pressed == curses.KEY_UP:
+                self.down(-1)
+            if key_pressed == curses.KEY_IC:
+                self.toggle_select()
+                self.down(1)
+
+            for key, func in self.dlg_keys:
+                if key == key_pressed:
+                    func()
+                    done = True
+
+        # help the garbage collector clean up circular references
+        # to make sure __del__() will be called to close the dialog
+        del self.dlg_keys
+
+
+class DlgCancelOrders(DlgListItems):
+    """modal dialog to cancel orders"""
+    def __init__(self, stdscr, gox):
+        self.gox = gox
+        hlp = [("INS", "select"), ("F8", "cancel selected"), ("F10", "exit")]
+        keys = [(curses.KEY_F8, self._do_cancel)]
+        DlgListItems.__init__(self, stdscr, 45, "Cancel order(s)", hlp, keys)
+
+    def init_items(self):
+        for order in self.gox.orderbook.owns:
+            self.items.append(order)
+        self.items.sort(key = lambda o: -o.price)
+
+    def paint_item(self, posy, index):
+        """paint one single order"""
+        order = self.items[index]
+        if order in self.selected:
+            marker = "*"
+            if index == self.item_sel:
+                attr = COLOR_PAIR["dialog_sel_sel"]
+            else:
+                attr = COLOR_PAIR["dialog_sel_text"] + curses.A_BOLD
+        else:
+            marker = ""
+            if index == self.item_sel:
+                attr = COLOR_PAIR["dialog_sel"]
+            else:
+                attr = COLOR_PAIR["dialog_text"]
+
+        self.win.addstr(posy, 2, marker, attr)
+        self.win.addstr(posy, 5, order.typ, attr)
+        self.win.addstr(posy, 9, goxapi.int2str(order.price, self.gox.currency), attr)
+        self.win.addstr(posy, 22, goxapi.int2str(order.volume, "BTC"), attr)
+
+    def _do_cancel(self):
+        """cancel all selected orders (or the order under cursor if empty)"""
+
+        def do_cancel(order):
+            """cancel a single order"""
+            self.gox.cancel(order.oid)
+
+        if not len(self.items):
+            return
+        if not len(self.selected):
+            order = self.items[self.item_sel]
+            do_cancel(order)
+        else:
+            for order in self.selected:
+                do_cancel(order)
+
 
 
 
@@ -605,10 +757,11 @@ def main():
 
         gox.start()
         while True:
-            conwin.win.keypad(1)
             key = conwin.win.getch()
             if key == ord("q"):
                 break
+            if key == curses.KEY_F12:
+                DlgCancelOrders(stdscr, gox).modal()
             if key == curses.KEY_RESIZE:
                 stdscr.erase()
                 stdscr.refresh()
@@ -622,9 +775,6 @@ def main():
                 continue
             if key > ord("a") and key < ord("z"):
                 gox.signal_keypress(gox, (key))
-#            if key == curses.KEY_F8:
-#                gox.debug("foo")
-#                dummy_blub = WinTst(stdscr, gox)
 
         strategy_manager.unload()
         gox.stop()
