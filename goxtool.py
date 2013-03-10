@@ -21,17 +21,20 @@ framework for experimenting with trading bots
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0301,R0902,R0903,R0912,R0913,R0915,R0922
+# pylint: disable=C0301,C0302,R0902,R0903,R0912,R0913,R0915,R0922
 
 import argparse
 import curses
 import curses.panel
+import curses.textpad
 import goxapi
 import logging
 import locale
 import math
 import sys
+import time
 import traceback
+import threading
 
 
 #
@@ -61,6 +64,10 @@ COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["dialog_sel",      curses.COLOR_CYAN,   curses.COLOR_BLUE]
             ,["dialog_sel_text", curses.COLOR_BLUE,   curses.COLOR_YELLOW]
             ,["dialog_sel_sel",  curses.COLOR_YELLOW, curses.COLOR_BLUE]
+
+            ,["dialog_bid_text", curses.COLOR_GREEN,  curses.COLOR_BLACK]
+            ,["dialog_ask_text", curses.COLOR_RED,    curses.COLOR_WHITE]
+
             ]
 
 COLOR_PAIR = {}
@@ -642,6 +649,174 @@ class DlgCancelOrders(DlgListItems):
                 do_cancel(order)
 
 
+class TextBox():
+    """wrapper for curses.textpadTextbox"""
+
+    def __init__(self, dlg, posy, posx, length):
+        self.dlg = dlg
+        self.win = dlg.win.derwin(1, length, posy, posx)
+        self.box = curses.textpad.Textbox(self.win, insert_mode=True)
+        self.value = ""
+        self.result = None
+        self.editing = False
+
+    def __del__(self):
+        self.box = None
+        self.win = None
+
+    def modal(self):
+        """enter te edit box modal loop"""
+        self.win.move(0, 0)
+        self.editing = True
+        threading.Thread(None, self.cursor_placement_thread).start()
+        self.value = self.box.edit(self.validator)
+        self.editing = False
+        return self.result
+
+    def validator(self, char):
+        """here we tweak the behavior slightly, especially we want to
+        end modal editing mode immediately on arrow up/down and on enter"""
+        if curses.ascii.isprint(char):
+            return char
+        if char in [curses.KEY_DOWN, curses.KEY_UP]:
+            self.result = char
+            return curses.ascii.BEL
+        if char in [10, 13, curses.KEY_ENTER, curses.ascii.BEL]:
+            self.result = 10
+            return curses.ascii.BEL
+        if char == curses.KEY_F10:
+            self.result = -1
+            return curses.ascii.BEL
+        return char
+
+    def cursor_placement_thread(self):
+        """this is the most ugly hack of the entire program. During the
+        signals hat are fired while we are editing there will be many repaints
+        of other other panels below this dialog and when curses is done
+        repainting everything the blinking cursor is not in the correct
+        position. This is only a cosmetic problem but very annnoying. Try to
+        force it into the edit field by repainting it very often."""
+        while self.editing:
+            self.win.touchwin()
+            self.win.refresh()
+            time.sleep(0.1)
+
+
+class NumberBox(TextBox):
+    """TextBox that only accepts numbers"""
+    def __init__(self, dlg, posy, posx, length):
+        TextBox.__init__(self, dlg, posy, posx, length)
+
+    def validator(self, char):
+        """allow only numbers to be entered"""
+        char = TextBox.validator(self, char)
+        if curses.ascii.isprint(char):
+            if chr(char) not in "0123456789.":
+                return 0
+        return char
+
+
+class DlgNewOrder(Win):
+    """abtract base class for entering new orders"""
+    def __init__(self, stdscr, gox, color, title):
+        self.gox = gox
+        self.color = color
+        self.title = title
+        self.edit_price = None
+        self.edit_volume = None
+        Win.__init__(self, stdscr)
+
+    def calc_size(self):
+        Win.calc_size(self)
+        self.width = 35
+        self.height = 8
+        self.posx = (self.termwidth - self.width) / 2
+        self.posy = (self.termheight - self.height) / 2
+
+    def paint(self):
+        self.win.bkgd(" ", self.color)
+        self.win.border()
+        self.win.addstr(0, 1, " %s " % self.title, self.color)
+        self.win.addstr(2, 2, " price", self.color)
+        self.win.addstr(4, 2, "volume", self.color)
+        self.win.addstr(6, 2, "F10 ", self.color + curses.A_REVERSE)
+        self.win.addstr("cancel ", self.color)
+        self.win.addstr("Enter ", self.color + curses.A_REVERSE)
+        self.win.addstr("submit ", self.color)
+        self.edit_price = NumberBox(self, 2, 10, 20)
+        self.edit_volume = NumberBox(self, 4, 10, 20)
+
+    def do_submit(self, price_float, volume_float):
+        """sumit the order. implementating class will do eiter buy or sell"""
+        raise NotImplementedError()
+
+    def modal(self):
+        """enter the modal getch() loop of this dialog"""
+        focus = 1
+        # next time I am going to use some higher level
+        # wrapper on top of curses, i promise...
+        while True:
+            if focus == 1:
+                res = self.edit_price.modal()
+                if res == -1:
+                    break # cancel entire dialog
+                if res in [10, curses.KEY_DOWN]:
+                    try:
+                        price_float = float(self.edit_price.value)
+                        focus = 2
+                    except ValueError:
+                        pass # can't move down until this is a valid number
+
+            if focus == 2:
+                res = self.edit_volume.modal()
+                if res == -1:
+                    break # cancel entire dialog
+                if res == curses.KEY_UP:
+                    focus = 1
+                if res == 10:
+                    try:
+                        volume_float = float(self.edit_volume.value)
+                        break # have both values now, can submit order
+                    except ValueError:
+                        pass # no float number, stay in this edit field
+
+        if res == -1:
+            #user has hit f10. just end here, do nothing
+            pass
+        if res == 10:
+            self.do_submit(price_float, volume_float)
+
+        # make sure all cyclic references are garbage collected or
+        # otherwise the curses window won't disappear
+        self.edit_price = None
+        self.edit_volume = None
+
+
+class DlgNewOrderBid(DlgNewOrder):
+    """Modal dialog for new buy order"""
+    def __init__(self, stdscr, gox):
+        DlgNewOrder.__init__(self, stdscr, gox,
+            COLOR_PAIR["dialog_bid_text"],
+            "New buy order")
+
+    def do_submit(self, price, volume):
+        price = goxapi.float2int(price, self.gox.currency)
+        volume = goxapi.float2int(volume, "BTC")
+        self.gox.buy(price, volume)
+
+
+class DlgNewOrderAsk(DlgNewOrder):
+    """Modal dialog for new sell order"""
+    def __init__(self, stdscr, gox):
+        DlgNewOrder.__init__(self, stdscr, gox,
+             COLOR_PAIR["dialog_ask_text"],
+            "New sell order")
+
+    def do_submit(self, price, volume):
+        price = goxapi.float2int(price, self.gox.currency)
+        volume = goxapi.float2int(volume, "BTC")
+        self.gox.sell(price, volume)
+
 
 
 #
@@ -760,7 +935,11 @@ def main():
             key = conwin.win.getch()
             if key == ord("q"):
                 break
-            if key == curses.KEY_F12:
+            if key == curses.KEY_F4:
+                DlgNewOrderBid(stdscr, gox).modal()
+            if key == curses.KEY_F5:
+                DlgNewOrderAsk(stdscr, gox).modal()
+            if key == curses.KEY_F6:
                 DlgCancelOrders(stdscr, gox).modal()
             if key == curses.KEY_RESIZE:
                 stdscr.erase()

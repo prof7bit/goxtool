@@ -52,13 +52,23 @@ def int2str(value_int, currency):
         return ("%12.5f" % (value_int / 100000.0))
 
 def int2float(value_int, currency):
-    """return currency integer formatted as a string"""
+    """convert integer to float, determine the factor by currency name"""
     if currency == "BTC":
         return value_int / 100000000.0
     if currency == "JPY":
         return value_int / 1000.0
     else:
         return value_int / 100000.0
+
+def float2int(value_float, currency):
+    """convert float value to integer, determine the factor by currency name"""
+    if currency == "BTC":
+        return value_float * 100000000.0
+    if currency == "JPY":
+        return value_float * 1000.0
+    else:
+        return value_float * 100000.0
+
 
 
 def start_thread(thread_func):
@@ -78,7 +88,7 @@ class GoxConfig(SafeConfigParser):
 
     _DEFAULTS = [["gox", "currency", "USD"]
                 ,["gox", "use_ssl", "True"]
-                ,["gox", "use_plain_old_websocket", "False"]
+                ,["gox", "use_plain_old_websocket", "True"]
                 ,["gox", "load_fulldepth", "True"]
                 ,["gox", "load_history", "True"]
                 ,["gox", "secret_key", ""]
