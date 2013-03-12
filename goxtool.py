@@ -700,6 +700,8 @@ class TextBox():
         and we also want to catch ESC and F10, to abort the entire dialog"""
         if curses.ascii.isprint(char):
             return char
+        if char == curses.ascii.TAB:
+            char = curses.KEY_DOWN
         if char in [curses.KEY_DOWN, curses.KEY_UP]:
             self.result = char
             return curses.ascii.BEL
@@ -783,7 +785,7 @@ class DlgNewOrder(Win):
                 res = self.edit_price.modal()
                 if res == -1:
                     break # cancel entire dialog
-                if res in [10, curses.KEY_DOWN]:
+                if res in [10, curses.KEY_DOWN, curses.KEY_UP]:
                     try:
                         price_float = float(self.edit_price.value)
                         focus = 2
@@ -794,7 +796,7 @@ class DlgNewOrder(Win):
                 res = self.edit_volume.modal()
                 if res == -1:
                     break # cancel entire dialog
-                if res == curses.KEY_UP:
+                if res in [curses.KEY_UP, curses.KEY_DOWN]:
                     focus = 1
                 if res == 10:
                     try:
