@@ -138,6 +138,37 @@ class Win:
         del self.win
         self.__create_win()
 
+    def addstr(self, *args):
+        """drop-in replacement for addstr that will never raie exceptions
+        and that will cut off at end of line instead of wrapping"""
+        if len(args) > 0:
+            line, col = self.win.getyx()
+            string = args[0]
+            attr = 0
+        if len(args) > 1:
+            attr = args[1]
+        if len(args) > 2:
+            line, col, string = args[:3]
+            attr = 0
+        if len(args) > 3:
+            attr = args[3]
+        if line >= self.height:
+            return
+        space_left = self.width - col - 1 #always omit last column, avoids problems.
+        if space_left <= 0:
+            return
+        self.win.addstr(line, col, string[:space_left], attr)
+
+    def addch(self, posy, posx, character, color_pair):
+        """place a character but don't throw error in lower right corner"""
+        if posy < 0 or posy > self.height - 1:
+            return
+        if posx < 0 or posx > self.width - 1:
+            return
+        if posx == self.width - 1 and posy == self.height - 1:
+            return
+        self.win.addch(posy, posx, character, color_pair)
+
     def __create_win(self):
         """create the window. This will also be called on every resize,
         windows won't be moved, they will be deleted and recreated."""
@@ -232,11 +263,11 @@ class WinOrderBook(Win):
         i = 0
         cnt = len(book.asks)
         while pos >= 0 and  i < cnt:
-            self.win.addstr(pos, 0,  goxapi.int2str(book.asks[i].price, book.gox.currency), col_ask)
-            self.win.addstr(pos, 12, goxapi.int2str(book.asks[i].volume, "BTC"), col_vol)
+            self.addstr(pos, 0,  goxapi.int2str(book.asks[i].price, book.gox.currency), col_ask)
+            self.addstr(pos, 12, goxapi.int2str(book.asks[i].volume, "BTC"), col_vol)
             ownvol = book.get_own_volume_at(book.asks[i].price)
             if ownvol:
-                self.win.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
+                self.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
             pos -= 1
             i += 1
 
@@ -245,11 +276,11 @@ class WinOrderBook(Win):
         i = 0
         cnt = len(book.bids)
         while pos < self.height and  i < cnt:
-            self.win.addstr(pos, 0,  goxapi.int2str(book.bids[i].price, book.gox.currency), col_bid)
-            self.win.addstr(pos, 12, goxapi.int2str(book.bids[i].volume, "BTC"), col_vol)
+            self.addstr(pos, 0,  goxapi.int2str(book.bids[i].price, book.gox.currency), col_bid)
+            self.addstr(pos, 12, goxapi.int2str(book.bids[i].volume, "BTC"), col_vol)
             ownvol = book.get_own_volume_at(book.bids[i].price)
             if ownvol:
-                self.win.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
+                self.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
             pos += 1
             i += 1
 
@@ -312,16 +343,6 @@ class WinChart(Win):
         screen_from_bottom = relative_from_bottom * self.height
         return int(self.height - screen_from_bottom)
 
-    def addch_safe(self, posy, posx, character, color_pair):
-        """place a character but don't throw error in lower right corner"""
-        if posy < 0 or posy > self.height - 1:
-            return
-        if posx < 0 or posx > self.width - 1:
-            return
-        if posx == self.width - 1 and posy == self.height - 1:
-            return
-        self.win.addch(posy, posx, character, color_pair)
-
     def paint_candle(self, posx, candle):
         """paint a single candle"""
 
@@ -334,20 +355,20 @@ class WinChart(Win):
             if posy >= shigh and posy < sopen and posy < sclose:
                 # upper wick
                 # pylint: disable=E1101
-                self.addch_safe(posy, posx,
+                self.addch(posy, posx,
                     curses.ACS_VLINE, COLOR_PAIR["chart_text"])
             if posy >= sopen and posy < sclose:
                 # red body
-                self.addch_safe(posy, posx,
+                self.addch(posy, posx,
                     ord(" "), curses.A_REVERSE + COLOR_PAIR["chart_down"])
             if posy >= sclose and posy < sopen:
                 # green body
-                self.addch_safe(posy, posx,
+                self.addch(posy, posx,
                     ord(" "), curses.A_REVERSE + COLOR_PAIR["chart_up"])
             if posy >= sopen and posy >= sclose and posy < slow:
                 # lower wick
                 # pylint: disable=E1101
-                self.addch_safe(posy, posx,
+                self.addch(posy, posx,
                     curses.ACS_VLINE, COLOR_PAIR["chart_text"])
 
     def paint(self):
@@ -393,22 +414,22 @@ class WinChart(Win):
             if self.is_in_range(order.price):
                 posy = self.price_to_screen(order.price)
                 if order.status == "pending":
-                    self.addch_safe(posy, posx,
+                    self.addch(posy, posx,
                         ord("o"), COLOR_PAIR["order_pending"])
                 else:
-                    self.addch_safe(posy, posx,
+                    self.addch(posy, posx,
                         ord("O"), COLOR_PAIR["chart_text"])
 
         if self.is_in_range(book.bid):
             posy = self.price_to_screen(book.bid)
             # pylint: disable=E1101
-            self.addch_safe(posy, posx,
+            self.addch(posy, posx,
                 curses.ACS_HLINE, COLOR_PAIR["chart_up"])
 
         if self.is_in_range(book.ask):
             posy = self.price_to_screen(book.ask)
             # pylint: disable=E1101
-            self.addch_safe(posy, posx,
+            self.addch(posy, posx,
                 curses.ACS_HLINE, COLOR_PAIR["chart_down"])
 
         # paint the y-axis labels
@@ -419,7 +440,7 @@ class WinChart(Win):
             while not labelprice > self.pmax:
                 posy = self.price_to_screen(labelprice)
                 if posy < self.height - 1:
-                    self.win.addstr(
+                    self.addstr(
                         posy, posx,
                         goxapi.int2str(labelprice, self.gox.currency),
                         COLOR_PAIR["chart_text"]
@@ -479,8 +500,8 @@ class WinStatus(Win):
         line2 += "total ask: " +str_btc + " BTC | "
         line2 += "ratio: " + str_ratio + " " + self.gox.currency + "/BTC | "
         line2 += "order lag: " + self.order_lag_txt
-        self.win.addstr(0, 0, line1, COLOR_PAIR["status_text"])
-        self.win.addstr(1, 0, line2, COLOR_PAIR["status_text"])
+        self.addstr(0, 0, line1, COLOR_PAIR["status_text"])
+        self.addstr(1, 0, line2, COLOR_PAIR["status_text"])
 
 
     def slot_changed(self, dummy_sender, dummy_data):
@@ -531,7 +552,7 @@ class DlgListItems(Win):
         self.win.bkgd(" ", COLOR_PAIR["dialog_text"])
         self.win.erase()
         self.win.border()
-        self.win.addstr(0, 1, " %s " % self.dlg_title, COLOR_PAIR["dialog_text"])
+        self.addstr(0, 1, " %s " % self.dlg_title, COLOR_PAIR["dialog_text"])
         index = self.item_top
         posy = 2
         while posy < self.height - 3 and index < len(self.items):
@@ -541,8 +562,8 @@ class DlgListItems(Win):
 
         self.win.move(self.height - 2, 2)
         for key, desc in self.dlg_hlp:
-            self.win.addstr(key + " ",  COLOR_PAIR["dialog_sel"])
-            self.win.addstr(desc + " ", COLOR_PAIR["dialog_text"])
+            self.addstr(key + " ",  COLOR_PAIR["dialog_sel"])
+            self.addstr(desc + " ", COLOR_PAIR["dialog_text"])
 
     def down(self, num):
         """move the cursor down (or up)"""
@@ -627,10 +648,10 @@ class DlgCancelOrders(DlgListItems):
             else:
                 attr = COLOR_PAIR["dialog_text"]
 
-        self.win.addstr(posy, 2, marker, attr)
-        self.win.addstr(posy, 5, order.typ, attr)
-        self.win.addstr(posy, 9, goxapi.int2str(order.price, self.gox.currency), attr)
-        self.win.addstr(posy, 22, goxapi.int2str(order.volume, "BTC"), attr)
+        self.addstr(posy, 2, marker, attr)
+        self.addstr(posy, 5, order.typ, attr)
+        self.addstr(posy, 9, goxapi.int2str(order.price, self.gox.currency), attr)
+        self.addstr(posy, 22, goxapi.int2str(order.volume, "BTC"), attr)
 
     def _do_cancel(self):
         """cancel all selected orders (or the order under cursor if empty)"""
@@ -736,13 +757,13 @@ class DlgNewOrder(Win):
     def paint(self):
         self.win.bkgd(" ", self.color)
         self.win.border()
-        self.win.addstr(0, 1, " %s " % self.title, self.color)
-        self.win.addstr(2, 2, " price", self.color)
-        self.win.addstr(4, 2, "volume", self.color)
-        self.win.addstr(6, 2, "F10 ", self.color + curses.A_REVERSE)
-        self.win.addstr("cancel ", self.color)
-        self.win.addstr("Enter ", self.color + curses.A_REVERSE)
-        self.win.addstr("submit ", self.color)
+        self.addstr(0, 1, " %s " % self.title, self.color)
+        self.addstr(2, 2, " price", self.color)
+        self.addstr(4, 2, "volume", self.color)
+        self.addstr(6, 2, "F10 ", self.color + curses.A_REVERSE)
+        self.addstr("cancel ", self.color)
+        self.addstr("Enter ", self.color + curses.A_REVERSE)
+        self.addstr("submit ", self.color)
         self.edit_price = NumberBox(self, 2, 10, 20)
         self.edit_volume = NumberBox(self, 4, 10, 20)
 
