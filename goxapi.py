@@ -486,7 +486,7 @@ class BaseClient(BaseObject):
 
     SOCKETIO_HOST = "socketio.mtgox.com"
     WEBSOCKET_HOST = "websocket.mtgox.com"
-    HTTP_HOST = "mtgox.com"
+    HTTP_HOST = "data.mtgox.com"
 
     def __init__(self, currency, secret, config):
         BaseObject.__init__(self)
