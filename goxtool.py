@@ -599,7 +599,7 @@ class DlgListItems(Win):
         done = False
         while not done:
             key_pressed = self.win.getch()
-            if key_pressed in [ord("q"), curses.KEY_F10]:
+            if key_pressed in [27, ord("q"), curses.KEY_F10]:
                 done = True
             if key_pressed == curses.KEY_DOWN:
                 self.down(1)
@@ -696,7 +696,8 @@ class TextBox():
 
     def validator(self, char):
         """here we tweak the behavior slightly, especially we want to
-        end modal editing mode immediately on arrow up/down and on enter"""
+        end modal editing mode immediately on arrow up/down and on enter
+        and we also want to catch ESC and F10, to abort the entire dialog"""
         if curses.ascii.isprint(char):
             return char
         if char in [curses.KEY_DOWN, curses.KEY_UP]:
@@ -705,7 +706,7 @@ class TextBox():
         if char in [10, 13, curses.KEY_ENTER, curses.ascii.BEL]:
             self.result = 10
             return curses.ascii.BEL
-        if char == curses.KEY_F10:
+        if char in [27, curses.KEY_F10]:
             self.result = -1
             return curses.ascii.BEL
         return char
@@ -730,11 +731,12 @@ class NumberBox(TextBox):
 
     def validator(self, char):
         """allow only numbers to be entered"""
-        char = TextBox.validator(self, char)
+        if char == ord("q"):
+            char = curses.KEY_F10
         if curses.ascii.isprint(char):
             if chr(char) not in "0123456789.":
-                return 0
-        return char
+                char = 0
+        return TextBox.validator(self, char)
 
 
 class DlgNewOrder(Win):
