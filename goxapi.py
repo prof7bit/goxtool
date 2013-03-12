@@ -20,12 +20,15 @@
 # pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913
 
 import base64
+import contextlib
 from ConfigParser import SafeConfigParser
 from Crypto.Cipher import AES
 import getpass
+import gzip
 import hashlib
 import hmac
 import inspect
+import io
 import json
 import logging
 import os
@@ -69,7 +72,19 @@ def float2int(value_float, currency):
     else:
         return value_float * 100000.0
 
-
+def http_request(url):
+    """request data from the HTTP API, returns a string"""
+    request = urllib2.Request(url)
+    request.add_header('Accept-encoding', 'gzip')
+    data = ""
+    with contextlib.closing(urllib2.urlopen(request)) as response:
+        if response.info().get('Content-Encoding') == 'gzip':
+            with io.BytesIO(response.read()) as buf:
+                with gzip.GzipFile(fileobj=buf) as unzipped:
+                    data = unzipped.read()
+        else:
+            data = response.read()
+    return data
 
 def start_thread(thread_func):
     """start a new thread to execute the supplied function"""
@@ -520,10 +535,9 @@ class BaseClient(BaseObject):
             and then terminate. This is called in a separate thread after
             the streaming API has been connected."""
             self.debug("requesting initial full depth")
-            fulldepth = urllib2.urlopen("https://" +  self.HTTP_HOST \
+            fulldepth = http_request("https://" +  self.HTTP_HOST \
                 + "/api/1/BTC" + self.currency + "/fulldepth")
-            self.signal_fulldepth(self, (json.load(fulldepth)))
-            fulldepth.close()
+            self.signal_fulldepth(self, (json.loads(fulldepth)))
 
         start_thread(fulldepth_thread)
 
@@ -537,10 +551,9 @@ class BaseClient(BaseObject):
             # 1309108565, 1309108565842636 <-- first big transaction ID
 
             self.debug("requesting history")
-            res = urllib2.urlopen("https://" +  self.HTTP_HOST \
+            json_hist = http_request("https://" +  self.HTTP_HOST \
                 + "/api/1/BTC" + self.currency + "/trades")
-            history = json.load(res)
-            res.close()
+            history = json.loads(json_hist)
             if history["result"] == "success":
                 self.signal_fullhistory(self, history["return"])
 
@@ -1148,16 +1161,9 @@ class OrderBook(BaseObject):
         bids and asks and then another time with own=True to update our
         own orders list"""
         if own:
-            self.debug("### this trade message affects only our own order")
-            #for i in range(len(self.owns)):
-            #    # FIXME: this is broken, what if I have many orders at
-            #    # the same price? how do I know which one? Do I need to
-            #    # do this at all?
-            #    if self.owns[i].price == price:
-            #        self.owns[i].volume -= volume
-            #        if self.owns[i].volume <= 0:
-            #            self.owns.pop(i)
-            #        break
+            self.debug("own order was filled")
+            # nothing special to do here, there will also be
+            # separate user_order messages to update my owns list
 
         else:
             voldiff = -volume
