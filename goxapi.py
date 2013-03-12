@@ -1024,11 +1024,13 @@ class Gox(BaseObject):
         else: # removed (filled or canceled)
             self.signal_userorder(self, (0, 0, "", oid, "removed"))
 
-    def _on_op_private_wallet(self, dummy_msg):
+    def _on_op_private_wallet(self, msg):
         """handle incoming wallet message (op=private, private=wallet)"""
-        # I am lazy, just sending a new info request,
-        # so it will update during its op=result.
-        self.client.send_signed_call("private/info", {}, "info")
+        balance = msg["wallet"]["balance"]
+        currency = balance["currency"]
+        total = int(balance["value_int"])
+        self.wallet[currency] = total
+        self.signal_wallet(self, ())
 
     def _on_op_remark(self, msg):
         """handler for op=remark messages"""
