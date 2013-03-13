@@ -660,6 +660,7 @@ class WebsocketClient(BaseClient):
         """connect to the webocket and tart receiving inan infinite loop.
         Try to reconnect whenever connection is lost. Each received json
         string will be dispatched with a signal_recv signal"""
+        reconnect_time = 5
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         while not self._terminating:  #loop 0 (connect, reconnect)
@@ -675,6 +676,7 @@ class WebsocketClient(BaseClient):
                 self.debug("connected, subscribing needed channels")
                 self.channel_subscribe()
 
+                reconnect_time = 5
                 self.debug("waiting for data...")
                 while not self._terminating: #loop1 (read messages)
                     str_json = self.socket.recv()
@@ -685,10 +687,11 @@ class WebsocketClient(BaseClient):
             # pylint: disable=W0703
             except Exception as exc:
                 if not self._terminating:
-                    self.debug(exc, "reconnecting in 5 seconds...")
+                    self.debug(exc, "reconnecting in %i seconds..." % reconnect_time)
                     if self.socket:
                         self.socket.close()
-                    time.sleep(5)
+                    time.sleep(reconnect_time)
+                    reconnect_time = int(reconnect_time * 1.2)
 
 
     def send(self, json_str):
