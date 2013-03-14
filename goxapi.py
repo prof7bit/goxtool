@@ -19,9 +19,28 @@
 
 # pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913
 
+import sys
+PY_VERSION = sys.version_info
+
+if PY_VERSION < (2, 7):
+    print("Sorry, minimal Python version is 2.7, you have: %d.%d"
+        % (PY_VERSION.major, PY_VERSION.minor))
+    sys.exit(1)
+
+if PY_VERSION < (3, 0):
+    from ConfigParser import SafeConfigParser
+    import urllib
+    import urllib2
+    input = raw_input # python-2.x has raw_input()
+else:
+    # python 3 support is incomplete, its not even valid syntax in some places
+    import urllib.request, urllib.parse, urllib.error
+    from configparser import SafeConfigParser
+    print("Sorry, no python 3 yet, this will mot likely crash")
+
 import base64
+import binascii
 import contextlib
-from ConfigParser import SafeConfigParser
 from Crypto.Cipher import AES
 import getpass
 import gzip
@@ -36,8 +55,6 @@ import struct
 import time
 import traceback
 import threading
-import urllib
-import urllib2
 import weakref
 import websocket
 
@@ -280,12 +297,12 @@ class Secret:
             return self.S_NO_SECRET
 
         # pylint: disable=E1101
-        hashed_pass = hashlib.sha512(password).digest()
+        hashed_pass = hashlib.sha512(password.encode("utf-8")).digest()
         crypt_key = hashed_pass[:32]
         crypt_ini = hashed_pass[-16:]
         aes = AES.new(crypt_key, AES.MODE_OFB, crypt_ini)
         try:
-            encrypted_secret = base64.b64decode(sec.strip())
+            encrypted_secret = base64.b64decode(sec.strip().encode("ascii"))
             self.secret = aes.decrypt(encrypted_secret).strip()
             self.key = key.strip()
         except ValueError:
@@ -295,17 +312,18 @@ class Secret:
         try:
             print("testing secret...")
             # is it plain ascii? (if not this will raise exception)
-            dummy = self.secret.encode("ascii")
+            dummy = self.secret.decode("ascii")
             # can it be decoded? correct size afterwards?
             if len(base64.b64decode(self.secret)) != 64:
                 raise Exception("decrypted secret has wrong size")
 
             print("testing key...")
             # key must be only hex digits and have the right size
-            if len(self.key.replace("-", "").decode("hex")) != 16:
+            hex_key = self.key.replace("-", "").encode("ascii")
+            if len(binascii.unhexlify(hex_key)) != 16:
                 raise Exception("key has wrong size")
 
-            print "ok :-)"
+            print("ok :-)")
             return self.S_OK
 
         # pylint: disable=W0703
@@ -313,9 +331,9 @@ class Secret:
             # this key and secret do not work :-(
             self.secret = ""
             self.key = ""
-            print "### Error occurred while testing the decrypted secret:"
-            print "    '%s'" % exc
-            print "    This does not seem to be a valid MtGox API secret"
+            print("### Error occurred while testing the decrypted secret:")
+            print("    '%s'" % traceback.format_exc())
+            print("    This does not seem to be a valid MtGox API secret")
             return self.S_FAIL
 
     def prompt_decrypt(self):
@@ -332,9 +350,9 @@ class Secret:
         password = getpass.getpass("enter passphrase for secret: ")
         result = self.decrypt(password)
         if result != self.S_OK:
-            print
-            print "secret could not be decrypted"
-            answer = raw_input("press any key to continue anyways " \
+            print("")
+            print("secret could not be decrypted")
+            answer = input("press any key to continue anyways " \
                 + "(trading disabled) or 'q' to quit: ")
             if answer == "q":
                 result = self.S_FAIL_FATAL
@@ -346,43 +364,47 @@ class Secret:
     def prompt_encrypt(self):
         """ask for key, secret and password on the command line,
         then encrypt the secret and store it in the ini file."""
-        print "Please copy/paste key and secret from MtGox and"
-        print "then provide a password to encrypt them."
-        print
-        key =    raw_input("             key: ").strip()
-        secret = raw_input("          secret: ").strip()
+        print("Please copy/paste key and secret from MtGox and")
+        print("then provide a password to encrypt them.")
+        print("")
+
+
+        key =    input("             key: ").strip()
+        secret = input("          secret: ").strip()
         while True:
             password1 = getpass.getpass("        password: ").strip()
             if password1 == "":
-                print "aborting"
+                print("aborting")
                 return
             password2 = getpass.getpass("password (again): ").strip()
             if password1 != password2:
-                print "you had a typo in the password. try again..."
+                print("you had a typo in the password. try again...")
             else:
                 break
 
         # pylint: disable=E1101
-        hashed_pass = hashlib.sha512(password1).digest()
+        hashed_pass = hashlib.sha512(password1.encode("utf-8")).digest()
         crypt_key = hashed_pass[:32]
         crypt_ini = hashed_pass[-16:]
         aes = AES.new(crypt_key, AES.MODE_OFB, crypt_ini)
 
         # since the secret is a base64 string we can just just pad it with
         # spaces which can easily be stripped again after decryping
-        secret += " " * (len(secret) % 16)
-        secret = base64.b64encode(aes.encrypt(secret))
+        print(len(secret))
+        secret += " " * (16 - len(secret) % 16)
+        print(len(secret))
+        secret = base64.b64encode(aes.encrypt(secret)).decode("ascii")
 
         self.config.set("gox", "secret_key", key)
         self.config.set("gox", "secret_secret", secret)
         self.config.save()
 
-        print "encrypted secret has been saved in %s" % self.config.filename
+        print("encrypted secret has been saved in %s" % self.config.filename)
 
     def know_secret(self):
         """do we know the secret key? The application must be able to work
         without secret and then just don't do any account related stuff"""
-        return (self.secret != "") and (self.key != "")
+        return(self.secret != "") and (self.key != "")
 
 
 class OHLCV():
