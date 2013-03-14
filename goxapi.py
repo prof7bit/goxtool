@@ -29,13 +29,21 @@ if PY_VERSION < (2, 7):
 
 if PY_VERSION < (3, 0):
     from ConfigParser import SafeConfigParser
-    import urllib
-    import urllib2
-    input = raw_input # python-2.x has raw_input()
+    from urllib import urlencode
+    from urllib2 import Request as URLRequest
+    from urllib2 import urlopen
+    input = raw_input # pylint: disable=W0622,C0103
 else:
-    # python 3 support is incomplete, its not even valid syntax in some places
-    import urllib.request, urllib.parse, urllib.error
-    from configparser import SafeConfigParser
+    # python 3 support is incomplete, its not even valid syntax in some places.
+    # I'm going to try to fix this carefully and only in small increments to not
+    # break existing code but there is no pressing need to port it to py3
+    # anytime soon, there is also no stable version of the websocket module
+    # for py3 yet and most importantly some dev tools like pylint are also
+    # still missing.
+    from urllib.request import Request as URLRequest    # pylint: disable=F,E
+    from urllib.request import urlopen                  # pylint: disable=F,E
+    from urllib.parse import urlencode                  # pylint: disable=F,E
+    from configparser import SafeConfigParser           # pylint: disable=F,E
     print("Sorry, no python 3 yet, this will mot likely crash")
 
 import base64
@@ -91,10 +99,10 @@ def float2int(value_float, currency):
 
 def http_request(url):
     """request data from the HTTP API, returns a string"""
-    request = urllib2.Request(url)
+    request = URLRequest(url)
     request.add_header('Accept-encoding', 'gzip')
     data = ""
-    with contextlib.closing(urllib2.urlopen(request)) as response:
+    with contextlib.closing(urlopen(request)) as response:
         if response.info().get('Content-Encoding') == 'gzip':
             with io.BytesIO(response.read()) as buf:
                 with gzip.GzipFile(fileobj=buf) as unzipped:
@@ -233,7 +241,7 @@ class Signal():
                 except:
                     errors.append(traceback.format_exc())
 
-            for obj, funcs in self._methods.items():
+            for obj, funcs in list(self._methods.items()):
                 for func in funcs:
                     try:
                         func(obj, sender, data)
@@ -332,7 +340,7 @@ class Secret:
             self.secret = ""
             self.key = ""
             print("### Error occurred while testing the decrypted secret:")
-            print("    '%s'" % traceback.format_exc())
+            print("    '%s'" % exc)
             print("    This does not seem to be a valid MtGox API secret")
             return self.S_FAIL
 
@@ -621,7 +629,7 @@ class BaseClient(BaseObject):
         sec = self.secret.secret
 
         params["nonce"] = struct.unpack('Q', os.urandom(8))
-        post = urllib.urlencode(params)
+        post = urlencode(params)
         # pylint: disable=E1101
         sign = hmac.new(base64.b64decode(sec), post, hashlib.sha512).digest()
 
@@ -631,9 +639,9 @@ class BaseClient(BaseObject):
             'Rest-Sign': base64.b64encode(sign)
         }
 
-        req = urllib2.Request("https://" + self.HTTP_HOST + "/api/1/" \
+        req = URLRequest("https://" + self.HTTP_HOST + "/api/1/" \
             + api_endpoint, post, headers)
-        res = urllib2.urlopen(req, post)
+        res = urlopen(req, post)
         return json.load(res)
 
     def send_signed_call(self, api_endpoint, params, reqid):
@@ -741,7 +749,7 @@ class SocketIOClient(BaseClient):
                 self.debug("*** Hint: connection problems? try: use_plain_old_websocket=True")
                 self.debug("trying Socket.IO: %s ..." % self.SOCKETIO_HOST)
 
-                url = urllib2.urlopen(
+                url = urlopen(
                     htp + self.SOCKETIO_HOST + "/socket.io/1?Currency=" +
                     self.currency, timeout=20)
                 params = url.read()
