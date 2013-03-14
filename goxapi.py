@@ -29,9 +29,9 @@ if PY_VERSION < (2, 7):
 
 if PY_VERSION < (3, 0):
     from ConfigParser import SafeConfigParser
-    from urllib import urlencode
     from urllib2 import Request as URLRequest
     from urllib2 import urlopen
+    from urllib import urlencode
     input = raw_input # pylint: disable=W0622,C0103
 else:
     # python 3 support is incomplete, its not even valid syntax in some places.
@@ -40,10 +40,10 @@ else:
     # anytime soon, there is also no stable version of the websocket module
     # for py3 yet and most importantly some dev tools like pylint are also
     # still missing.
+    from configparser import SafeConfigParser           # pylint: disable=F,E
     from urllib.request import Request as URLRequest    # pylint: disable=F,E
     from urllib.request import urlopen                  # pylint: disable=F,E
     from urllib.parse import urlencode                  # pylint: disable=F,E
-    from configparser import SafeConfigParser           # pylint: disable=F,E
     print("Sorry, no python 3 yet, this will mot likely crash")
 
 import base64
@@ -241,7 +241,7 @@ class Signal():
                 except:
                     errors.append(traceback.format_exc())
 
-            for obj, funcs in list(self._methods.items()):
+            for obj, funcs in self._methods.items():
                 for func in funcs:
                     try:
                         func(obj, sender, data)
@@ -457,8 +457,9 @@ class History(BaseObject):
         self._add_candle(candle)
         self.signal_changed(self, (self.length()))
 
-    def slot_trade(self, dummy_sender, (date, price, volume, dummy_typ, own)):
+    def slot_trade(self, dummy_sender, data):
         """slot for gox.signal_trade"""
+        (date, price, volume, dummy_typ, own) = data
         if not own:
             time_round = int(date / self.timeframe) * self.timeframe
             candle = self.last_candle()
@@ -478,8 +479,9 @@ class History(BaseObject):
         """add a new candle to the history but don't fire signal_changed"""
         self.candles.insert(0, candle)
 
-    def slot_fullhistory(self, dummy_sender, (history)):
+    def slot_fullhistory(self, dummy_sender, data):
         """process the result of the fullhistory request"""
+        (history) = data
         self.candles = []
         new_candle = OHLCV(0, 0, 0, 0, 0, 0)
         for trade in history:
@@ -892,10 +894,11 @@ class Gox(BaseObject):
                 if order.oid != "":
                     self.cancel(order.oid)
 
-    def slot_recv(self, dummy_sender, (str_json)):
+    def slot_recv(self, dummy_sender, data):
         """Slot for signal_recv, handle new incoming JSON message. Decode the
         JSON string into a Python object and dispatch it to the method that
         can handle it."""
+        (str_json) = data
         handler = None
         msg = json.loads(str_json)
         if "op" in msg:
@@ -1172,29 +1175,31 @@ class OrderBook(BaseObject):
         self.total_bid = 0
         self.total_ask = 0
 
-    def slot_ticker(self, dummy_sender, (bid, ask)):
+    def slot_ticker(self, dummy_sender, data):
         """Slot for signal_ticker, incoming ticker message"""
+        (bid, ask) = data
         self.bid = bid
         self.ask = ask
         self._repair_crossed_asks(ask)
         self._repair_crossed_bids(bid)
         self.signal_changed(self, ())
 
-    def slot_depth(self, dummy_sender, (typ, price, _voldiff, total_vol)):
+    def slot_depth(self, dummy_sender, data):
         """Slot for signal_depth, process incoming depth message"""
+        (typ, price, _voldiff, total_vol) = data
         if typ == "ask":
             self._update_asks(price, total_vol)
         if typ == "bid":
             self._update_bids(price, total_vol)
         self.signal_changed(self, ())
 
-    def slot_trade(self, dummy_sender,
-        (dummy_date, price, volume, typ, own)):
+    def slot_trade(self, dummy_sender, data):
         """Slot for signal_trade event, process incoming trade messages.
         For trades that also affect own orders this will be called twice:
         once during the normal public trade message, affecting the public
         bids and asks and then another time with own=True to update our
         own orders list"""
+        (dummy_date, price, volume, typ, own) = data
         if own:
             self.debug("own order was filled")
             # nothing special to do here, there will also be
@@ -1228,8 +1233,9 @@ class OrderBook(BaseObject):
 
         self.signal_changed(self, ())
 
-    def slot_user_order(self, dummy_sender, (price, volume, typ, oid, status)):
+    def slot_user_order(self, dummy_sender, data):
         """Slot for signal_userorder, process incoming user_order mesage"""
+        (price, volume, typ, oid, status) = data
         if status == "removed":
             for i in range(len(self.owns)):
                 if self.owns[i].oid == oid:
@@ -1262,9 +1268,10 @@ class OrderBook(BaseObject):
 
         self.signal_changed(self, ())
 
-    def slot_fulldepth(self, dummy_sender, (depth)):
+    def slot_fulldepth(self, dummy_sender, data):
         """Slot for signal_fulldepth, process received fulldepth data.
         This will clear the book and then re-initialize it from scratch."""
+        (depth) = data
         self.debug("### got full depth: updating orderbook...")
         self.bids = []
         self.asks = []
