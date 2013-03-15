@@ -1058,59 +1058,6 @@ class Gox(BaseObject):
         # we should log this, helps with debugging
         self.debug(msg)
 
-        if "success" in msg and not msg["success"]:
-            if msg["message"] == "Invalid call":
-                self._on_invalid_call(msg)
-
-    def _on_invalid_call(self, msg):
-        """this comes as an op=remark message and is a strange mystery"""
-
-        self.debug(msg)
-
-        # problem might finally be fixed (it was the nonce)
-        return
-
-
-
-        # Workaround: Maybe a bug in their server software,
-        # I don't know whats missing. Its all poorly documented :-(
-        # Sometimes some API calls fail the first time for no reason,
-        # if this happens just send them again. This happens only
-        # somtimes (10%) and sending them again will eventually succeed.
-
-        if msg["id"] == "idkey":
-            self.debug("### resending private/idkey")
-            self.client.send_signed_call(
-                "private/idkey", {}, "idkey")
-
-        elif msg["id"] == "info":
-            self.debug("### resending private/info")
-            self.client.send_signed_call(
-                "private/info", {}, "info")
-
-        elif msg["id"] == "orders":
-            self.debug("### resending private/orders")
-            self.client.send_signed_call(
-                "private/orders", {}, "orders")
-
-        elif "order_add:" in msg["id"]:
-            parts = msg["id"].split(":")
-            typ = parts[1]
-            price = int(parts[2])
-            volume = int(parts[3])
-            self.debug("### resending failed", msg["id"])
-            self._send_order_add(typ, price, volume)
-
-        elif "order_cancel:" in msg["id"]:
-            parts = msg["id"].split(":")
-            oid = parts[1]
-            self.debug("### resending failed", msg["id"])
-            self._send_order_cancel(oid)
-
-        else:
-            self.debug("_on_invalid_call() ignoring:", msg)
-
-
     def _send_order_add(self, typ, price, volume):
         """send an order"""
         self.client.send_signed_call(
