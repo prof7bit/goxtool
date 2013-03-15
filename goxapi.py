@@ -1077,6 +1077,14 @@ class Gox(BaseObject):
 
     def _on_invalid_call(self, msg):
         """this comes as an op=remark message and is a strange mystery"""
+
+        self.debug(msg)
+
+        # problem might finally be fixed (it was the nonce)
+        return
+
+
+
         # Workaround: Maybe a bug in their server software,
         # I don't know whats missing. Its all poorly documented :-(
         # Sometimes some API calls fail the first time for no reason,
