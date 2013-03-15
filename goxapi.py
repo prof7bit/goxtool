@@ -331,7 +331,6 @@ class Secret:
             print("ok :-)")
             return self.S_OK
 
-        # pylint: disable=W0703
         except Exception as exc:
             # this key and secret do not work :-(
             self.secret = ""
@@ -713,7 +712,6 @@ class WebsocketClient(BaseClient):
                         self.signal_recv(self, (str_json))
 
 
-            # pylint: disable=W0703
             except Exception as exc:
                 if not self._terminating:
                     self.debug(exc, "reconnecting in %i seconds..." % reconnect_time)
@@ -783,7 +781,6 @@ class SocketIOClient(BaseClient):
                         if str_json[0] == "{":
                             self.signal_recv(self, (str_json))
 
-            # pylint: disable=W0703
             except Exception as exc:
                 if not self._terminating:
                     self.debug(exc, "reconnecting in 5 seconds...")
