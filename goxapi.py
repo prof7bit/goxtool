@@ -17,7 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913
+# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913,W0703
 
 import sys
 PY_VERSION = sys.version_info
@@ -102,6 +102,18 @@ def start_thread(thread_func):
     thread.daemon = True
     thread.start()
     return thread
+
+def pretty_format(something):
+    """pretty-format a nested dict or list for debugging purposes.
+    If it happens to be a valid json string then it will be parsed first"""
+    try:
+        return pretty_format(json.loads(something))
+    except Exception:
+        try:
+            return json.dumps(something, indent=5)
+        except Exception:
+            return str(something)
+
 
 # pylint: disable=R0904
 class GoxConfig(SafeConfigParser):
