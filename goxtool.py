@@ -956,29 +956,34 @@ def main():
         strategy_manager = StrategyManager(gox, strat_mod_name)
 
         gox.start()
-        while True:
-            key = conwin.win.getch()
-            if key == ord("q"):
-                break
-            if key == curses.KEY_F4:
-                DlgNewOrderBid(stdscr, gox).modal()
-            if key == curses.KEY_F5:
-                DlgNewOrderAsk(stdscr, gox).modal()
-            if key == curses.KEY_F6:
-                DlgCancelOrders(stdscr, gox).modal()
-            if key == curses.KEY_RESIZE:
-                stdscr.erase()
-                stdscr.refresh()
-                conwin.resize()
-                bookwin.resize()
-                chartwin.resize()
-                statuswin.resize()
-                continue
-            if key == ord("l"):
-                strategy_manager.reload()
-                continue
-            if key > ord("a") and key < ord("z"):
-                gox.signal_keypress(gox, (key))
+        try:
+            while True:
+                key = conwin.win.getch()
+                if key == ord("q"):
+                    break
+                if key == curses.KEY_F4:
+                    DlgNewOrderBid(stdscr, gox).modal()
+                if key == curses.KEY_F5:
+                    DlgNewOrderAsk(stdscr, gox).modal()
+                if key == curses.KEY_F6:
+                    DlgCancelOrders(stdscr, gox).modal()
+                if key == curses.KEY_RESIZE:
+                    stdscr.erase()
+                    stdscr.refresh()
+                    conwin.resize()
+                    bookwin.resize()
+                    chartwin.resize()
+                    statuswin.resize()
+                    continue
+                if key == ord("l"):
+                    strategy_manager.reload()
+                    continue
+                if key > ord("a") and key < ord("z"):
+                    gox.signal_keypress(gox, (key))
+
+        except KeyboardInterrupt:
+            gox.debug("got Ctrl+C, trying to shut down cleanly.")
+            gox.debug("Hint: did you know you can also exit with 'q'?")
 
         strategy_manager.unload()
         gox.stop()
