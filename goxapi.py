@@ -27,25 +27,7 @@ if PY_VERSION < (2, 7):
         % (PY_VERSION.major, PY_VERSION.minor))
     sys.exit(1)
 
-if PY_VERSION < (3, 0):
-    from ConfigParser import SafeConfigParser
-    from urllib2 import Request as URLRequest
-    from urllib2 import urlopen
-    from urllib import urlencode
-    input = raw_input # pylint: disable=W0622,C0103
-else:
-    # python 3 support is incomplete, its not even valid syntax in some places.
-    # I'm going to try to fix this carefully and only in small increments to not
-    # break existing code but there is no pressing need to port it to py3
-    # anytime soon, there is also no stable version of the websocket module
-    # for py3 yet and most importantly some dev tools like pylint are also
-    # still missing.
-    from configparser import SafeConfigParser           # pylint: disable=F,E
-    from urllib.request import Request as URLRequest    # pylint: disable=F,E
-    from urllib.request import urlopen                  # pylint: disable=F,E
-    from urllib.parse import urlencode                  # pylint: disable=F,E
-    print("Sorry, no python 3 yet, this will mot likely crash")
-
+from ConfigParser import SafeConfigParser
 import base64
 import binascii
 import contextlib
@@ -61,8 +43,13 @@ import logging
 import time
 import traceback
 import threading
+from urllib2 import Request as URLRequest
+from urllib2 import urlopen
+from urllib import urlencode
 import weakref
 import websocket
+
+input = raw_input # pylint: disable=W0622,C0103
 
 FORCE_PROTOCOL = ""
 FORCE_NO_FULLDEPTH = False
