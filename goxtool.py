@@ -671,7 +671,7 @@ class DlgCancelOrders(DlgListItems):
 
 
 class TextBox():
-    """wrapper for curses.textpadTextbox"""
+    """wrapper for curses.textpad.Textbox"""
 
     def __init__(self, dlg, posy, posx, length):
         self.dlg = dlg
