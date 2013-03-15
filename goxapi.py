@@ -58,8 +58,6 @@ import inspect
 import io
 import json
 import logging
-import os
-import struct
 import time
 import traceback
 import threading
@@ -630,7 +628,7 @@ class BaseClient(BaseObject):
         key = self.secret.key
         sec = self.secret.secret
 
-        params["nonce"] = struct.unpack('Q', os.urandom(8))
+        params["nonce"] = str(int(time.time() * 1E6))
         post = urlencode(params)
         # pylint: disable=E1101
         sign = hmac.new(base64.b64decode(sec), post, hashlib.sha512).digest()
@@ -657,7 +655,7 @@ class BaseClient(BaseObject):
         key = self.secret.key
         sec = self.secret.secret
 
-        nonce = struct.unpack('Q', os.urandom(8))
+        nonce = str(int(time.time() * 1E6))
 
         call = json.dumps({
             "id"       : reqid,
