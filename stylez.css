@@ -1,0 +1,9 @@
+pre {
+  border: 1px solid #999999;
+  padding: 1em;
+  background-color: #333333;
+  font-family: monospace;
+  margin-left: 2em;
+  color: #33ff33;
+  font-weight: bold;
+}
