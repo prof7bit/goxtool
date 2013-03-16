@@ -4,14 +4,31 @@
   <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
   <title>goxtool.py</title>
   <style type="text/css">
-    @import url(stylez.css);
+.keycmd {
+  border: 1px outset #666666;
+  padding: 0.2em;
+  background-color: #cccccc;
+  font-family: monospace;
+  color: black;
+  font-weight: bold;
+}
+pre {
+  border: 1px solid #999999;
+  padding: 1em;
+  background-color: #333333;
+  font-family: monospace;
+  margin-left: 2em;
+  color: #33ff33;
+  font-weight: bold;
+}
+
   </style>
 </head>
 <body>
 <h1>goxtool.py</h1>
 goxtool is a trading client for the MtGox Bitcoin currency exchange. It
 allows you to watch live market data, to send or cancel orders or to
-run a fully automated trading bot. It is designed to work in the linux
+run a fully automated trading bot. It is designed to work in the Linux
 console (sorry, no Windows yet), its written in Python and is using the
 (n)curses library to draw its user interface (it does <span
  style="font-weight: bold;">not</span> have a GTK or Qt interface), all
@@ -24,7 +41,8 @@ It looks like this:<br />
 </span>
 <h2>How to install
 </h2>
-Go to an empty folder or to the folder you usually use to clone
+Open a terminal in an empty folder or in the folder you usually use to
+clone
 repositories and clone the master branch:<br />
 <br />
 <pre>git clone git://github.com/prof7bit/goxtool.git</pre>
@@ -45,8 +63,67 @@ goxtool.py:<br />
 <br />
 <pre>cd goxtool-master<br />./goxtool.py</pre>
 <br />
+Keyboad commands (only the ones useful in view-only mode):<br />
+<ul>
+  <li><span class="keycmd">q</span>&nbsp;: quit</li>
+  <li><span class="keycmd">l</span>&nbsp;: (lower case "L") reload the
+strategy module (see advanced
+usage)</li>
+</ul>
 <h2>How to connect it to your MtGox account</h2>
-(TODO)<br />
+Do the following:<br />
+<pre>./goxtool.py --add-secret<br /></pre>
+This will now ask you for key, secret and
+password. Key and secret
+belong to a shared secret that is created by MtGox to authenticate your
+trading software against their API. You can request as many keys from
+MtGox as you need, every application you connect to your MtGox account
+should have its own key, you can also at any time delete the keys again
+that you no longer need.<br />
+<br />
+Now you need a Key/Secret pair for goxtool. Open your web browser, log
+in to your MtGox account, click on "Security Center", click on
+"Advanced API Key Creation", choose a name for your key (every key will
+have a name so you can later easily tell them apart), make sure you
+check at least the boxes "Get Info" and "Trade" (this is what the
+application will be allowed to do with this key) and then finally click
+on "Create Key".<br />
+<br />
+Now MtGox will create 2 strings of cryptic numbers and letters, the
+"API-Key" and the "Secret". Now cpoy&amp;paste the API-Key into the
+terminal where it asked you for "Key", press enter, now it will ask you
+for "Secret", copy&amp;paste the Secret into the tetminal, press enter
+and now it will ask you for a passphrase. It is important to understand
+what is going on here. The Key/Secret from above must under no
+circumstances ever come into the wrong hands, therefore goxtool won't
+just store them in the .ini file, goxtool will encrypt it and thats
+what the passphrase is needed for. Choose a secure passphrase (it will
+ask you twice to make sure there is no typo), you will also not see
+anything in the console (not even "*") while typing, this is not a bug,
+this is intentional. Choose a strong passphrase, type it into the
+terminal, press enter, repeat the passphrase, press enter again and now
+it will tell you that it has been encrypted and saved to the .ini file
+and exit.<br />
+<br />
+Now start goxtool again:<br />
+<br />
+<pre>./goxtool.py<br />enter passphrase for secret: <br /></pre>
+From now on every time you start goxtool it will ask you for the
+passphrase in order to be able to decrypt and use the secret. Enter
+your pasphrase, press enter. Now goxtool will start and you will notice
+that now it is showing your account balance at the top of the window.
+Now all trading functions are enabled.<br />
+<br />
+Keyboad commands for trading are:<br />
+<ul>
+  <li><span class="keycmd">F4</span>&nbsp;: New buy order</li>
+  <li><span class="keycmd">F5</span>&nbsp;: New sell order</li>
+  <li><span class="keycmd">F6</span>&nbsp;: View orders / cancel
+order(s)</li>
+</ul>
+<br />
+<br />
+<br />
 <br />
 (TODO: finish writing this howto)<br />
 <br />
