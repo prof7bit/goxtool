@@ -1,5 +1,5 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en-us">
 <head>
   <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
   <title>goxtool.py</title>
@@ -43,7 +43,8 @@ goxtool.py:<br />
 <br />
 <pre>cd goxtool-master<br />./goxtool.py</pre>
 <br />
-Keyboad commands (only the ones useful in view-only mode, without MtGox
+Keyboard commands (only the ones useful in view-only mode, without
+MtGox
 account):<br />
 <ul>
   <li><span class="keycmd">q</span>&nbsp;: quit</li>
@@ -51,6 +52,15 @@ account):<br />
 strategy module (see advanced
 usage)</li>
 </ul>
+There is also a <span style="font-family: monospace;">goxtool.ini</span>
+file, it will be created when you first start it. In the .ini file
+there are some parameters you can change, for example the currency you
+want to trade BTC against or some parameters regarding the network
+protocol. Some of the .ini settings can be overridden by command line
+options (use the --help option to see a list). The default protocol is
+websocket, the alternative would be socketio, goxtool implements both
+protocols but their socketio server is very unreliable, so I recommend
+leaving it at the default.<br />
 <h2>How to connect it to your MtGox account</h2>
 Do the following:<br />
 <pre>./goxtool.py --add-secret<br /></pre>
@@ -71,9 +81,9 @@ application will be allowed to do with this key) and then finally click
 on "Create Key".<br />
 <br />
 Now MtGox will create 2 strings of cryptic numbers and letters, the
-"API-Key" and the "Secret". Now cpoy&amp;paste the API-Key into the
+"API-Key" and the "Secret". Now copy&amp;paste the API-Key into the
 terminal where it asked you for "Key", press enter, now it will ask you
-for "Secret", copy&amp;paste the Secret into the tetminal, press enter
+for "Secret", copy&amp;paste the Secret into the terminal, press enter
 and now it will ask you for a passphrase. It is important to understand
 what is going on here. The Key/Secret from above must under no
 circumstances ever come into the wrong hands, therefore goxtool won't
@@ -91,11 +101,12 @@ Now start goxtool again:<br />
 <pre>./goxtool.py<br />enter passphrase for secret: <br /></pre>
 From now on every time you start goxtool it will ask you for the
 passphrase in order to be able to decrypt and use the secret. Enter
-your pasphrase, press enter. Now goxtool will start and you will notice
+your passphrase, press enter. Now goxtool will start and you will
+notice
 that now it is showing your account balance at the top of the window.
 Now all trading functions are enabled.<br />
 <br />
-Keyboad commands for trading:<br />
+Keyboard commands for trading:<br />
 <ul>
   <li><span class="keycmd">F4</span>&nbsp;: New buy order</li>
   <li><span class="keycmd">F5</span>&nbsp;: New sell order</li>
@@ -113,7 +124,7 @@ When entering a new order you can move between the fields with up/down
 keys or move to the next field with&nbsp;<span class="keycmd">tab</span>
 or&nbsp;<span class="keycmd">enter</span> (but only if you entered a
 valid number into the previous field, decimal separator is . (not
-comma, even on european computers), send the order with&nbsp;<span
+comma, even on European computers), send the order with&nbsp;<span
  class="keycmd">enter</span>. <br />
 <br />
 All dialogs can be closed with&nbsp;<span class="keycmd">F10</span>
@@ -124,14 +135,15 @@ it contains a class <span style="font-family: monospace;">Strategy()</span>
 which constitutes a trading bot that by default does nothing (its an
 empty skeleton). It has event methods (slots) connected to signals that
 will be fired when certain events occur. From within these methods you
-can then do arbitraty stuff (peek around in <span
+can then do arbitrary stuff (peek around in <span
  style="font-family: monospace;">gox.orderbook</span> to see where bids
 and asks are located, call <span style="font-family: monospace;">gox.buy()</span>,
 <span style="font-family: monospace;">gox.sell()</span>&nbsp; or <span
  style="font-family: monospace;">gox.cancel()</span> methods to build a
-fully automated trading bot or you can use the keypress slot (it will
+fully automated trading bot or you can use the key press slot (it will
 be called on all letter keys except "l" and "q") to build a
-semi-automatic bot that reacts to keypresses or to influence parameters
+semi-automatic bot that reacts to key presses or to influence
+parameters
 of your bot or anything else you can imagine. Examples of simple bots
 will soon follow.<br />
 <br />
@@ -160,11 +172,12 @@ way of remembering which orders you have sent already. A few moments
 (seconds or minutes) after you have sent them they will be acked by
 MtGox and it will fire <span style="font-family: monospace;">orderbook.signal_changed()
 </span>and when this happens you will find it in the <span
- style="font-family: monospace;">gox.orderbook.owns</span> list owns
-list and it will have an official order ID. I know this is not optimal
-(and might improve eventually) and also this is not a complete
-documentation. If you really want to dive into this: use the source,
-Luke.<br />
+ style="font-family: monospace;">gox.orderbook.owns</span> list and it
+will have an official order ID. I know this is not optimal (because
+this part of the code is not yet complete, eventually there will be
+dedicated signals to notify your bot about the results of its trading
+commands) and also this document is not yet a complete documentation.
+If you really want to dive into this: use the source, Luke.<br />
 <br />
 <br />
 (TODO: finish writing this howto)<br />
