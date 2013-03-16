@@ -3,26 +3,7 @@
 <head>
   <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
   <title>goxtool.py</title>
-  <style type="text/css">
-.keycmd {
-  border: 1px outset #666666;
-  padding: 0.2em;
-  background-color: #cccccc;
-  font-family: monospace;
-  color: black;
-  font-weight: bold;
-}
-pre {
-  border: 1px solid #999999;
-  padding: 1em;
-  background-color: #333333;
-  font-family: monospace;
-  margin-left: 2em;
-  color: #33ff33;
-  font-weight: bold;
-}
-
-  </style>
+  <link rel="stylesheet" href="styles.css" type="text/css" />
 </head>
 <body>
 <h1>goxtool.py</h1>
@@ -54,7 +35,6 @@ trading functions being enabled), you can later add a MtGox API-key to
 it to have full access to your account but for now just proceed to the
 next step, start it without an account, just to make sure everything
 works.<br />
-<br />
 <h2>How to start it
 </h2>
 change into to the <span style="font-family: monospace;">goxtool-master</span>
@@ -63,7 +43,8 @@ goxtool.py:<br />
 <br />
 <pre>cd goxtool-master<br />./goxtool.py</pre>
 <br />
-Keyboad commands (only the ones useful in view-only mode):<br />
+Keyboad commands (only the ones useful in view-only mode, without MtGox
+account):<br />
 <ul>
   <li><span class="keycmd">q</span>&nbsp;: quit</li>
   <li><span class="keycmd">l</span>&nbsp;: (lower case "L") reload the
@@ -114,15 +95,76 @@ your pasphrase, press enter. Now goxtool will start and you will notice
 that now it is showing your account balance at the top of the window.
 Now all trading functions are enabled.<br />
 <br />
-Keyboad commands for trading are:<br />
+Keyboad commands for trading:<br />
 <ul>
   <li><span class="keycmd">F4</span>&nbsp;: New buy order</li>
   <li><span class="keycmd">F5</span>&nbsp;: New sell order</li>
   <li><span class="keycmd">F6</span>&nbsp;: View orders / cancel
 order(s)</li>
 </ul>
+In the cancel dialog you can move up/down with the arrow keys, use&nbsp;<span
+ class="keycmd">INS</span> to select/unselect orders (you can select
+multiple orders and cancel them all at once) or if you just quickly
+want to cancel only one order just highlight to the order and hit&nbsp;<span
+ class="keycmd">F8</span>. It behaves a little bit like deleting files
+in midnight commander.<br />
 <br />
+When entering a new order you can move between the fields with up/down
+keys or move to the next field with&nbsp;<span class="keycmd">tab</span>
+or&nbsp;<span class="keycmd">enter</span> (but only if you entered a
+valid number into the previous field, decimal separator is . (not
+comma, even on european computers), send the order with&nbsp;<span
+ class="keycmd">enter</span>. <br />
 <br />
+All dialogs can be closed with&nbsp;<span class="keycmd">F10</span>
+or&nbsp;<span class="keycmd">ESC</span>.<br />
+<h2>Strategy module, strategy.py</h2>
+You can write your own trading bots. There is a file named strategy.py,
+it contains a class <span style="font-family: monospace;">Strategy()</span>
+which constitutes a trading bot that by default does nothing (its an
+empty skeleton). It has event methods (slots) connected to signals that
+will be fired when certain events occur. From within these methods you
+can then do arbitraty stuff (peek around in <span
+ style="font-family: monospace;">gox.orderbook</span> to see where bids
+and asks are located, call <span style="font-family: monospace;">gox.buy()</span>,
+<span style="font-family: monospace;">gox.sell()</span>&nbsp; or <span
+ style="font-family: monospace;">gox.cancel()</span> methods to build a
+fully automated trading bot or you can use the keypress slot (it will
+be called on all letter keys except "l" and "q") to build a
+semi-automatic bot that reacts to keypresses or to influence parameters
+of your bot or anything else you can imagine. Examples of simple bots
+will soon follow.<br />
+<br />
+If you decide to make serious use of this then please create a new
+python file for your strategy (make a copy of the default strategy.py
+skeleton), give it a different name and leave strategy.py alone so it
+won't collide with upstream changes you pull from github. By default
+goxtool will load strategy.py but you can start it with the --strategy
+command line option to specify your own strategy:<br />
+<pre>./goxtool --strategy=mybot.py</pre>
+You can even edit the file while goxtool is running and then reload it,
+just press the&nbsp;<span class="keycmd">l</span> key (lowercase L) and
+it will do the following things:<br />
+<ul>
+  <li>free the currently running instance of Strategy() (your __del__()
+method will be called)</li>
+  <li>re-import the changed module file</li>
+  <li>create a new instance of Strategy() and call your __init__()
+again.<br />
+  </li>
+</ul>
+You should persist the state of your bot (if needed) during __del__()
+and reload it in __init__(). Trading functions do NOT block, this means
+they also won't return the MtGox order ID, you need to find your own
+way of remembering which orders you have sent already. A few moments
+(seconds or minutes) after you have sent them they will be acked by
+MtGox and it will fire <span style="font-family: monospace;">orderbook.signal_changed()
+</span>and when this happens you will find it in the <span
+ style="font-family: monospace;">gox.orderbook.owns</span> list owns
+list and it will have an official order ID. I know this is not optimal
+(and might improve eventually) and also this is not a complete
+documentation. If you really want to dive into this: use the source,
+Luke.<br />
 <br />
 <br />
 (TODO: finish writing this howto)<br />

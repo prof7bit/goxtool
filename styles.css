@@ -1,0 +1,24 @@
+.keycmd {
+  border-style: outset;
+  border-width: 1px;
+  padding: 0.2em;
+  background-color: #cccccc;
+  font-family: monospace;
+  color: black;
+  font-weight: bold;
+}
+pre {
+  border: 1px solid #999999;
+  padding: 1em;
+  background-color: #333333;
+  font-family: monospace;
+  margin-left: 2em;
+  color: #33ff33;
+  font-weight: bold;
+}
+li {
+  margin: 0.3em;
+}
+h2 {
+  margin-top: 2em;
+}
