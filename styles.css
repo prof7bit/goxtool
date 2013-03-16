@@ -22,3 +22,8 @@ li {
 h2 {
   margin-top: 2em;
 }
+.codeword {
+  font-family: monospace;
+  font-style: italic;
+  font-weight: bolder;
+}

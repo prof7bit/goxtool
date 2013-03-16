@@ -18,7 +18,7 @@ putty).<br />
 <br />
 It looks like this:<br />
 (TODO: insert screenshot of terminal here)<br />
-<span style="font-weight: bold;"><br />
+<span style="font-weight: bold;">
 </span>
 <h2>How to install
 </h2>
@@ -28,7 +28,7 @@ repositories and clone the master branch:<br />
 <br />
 <pre>git clone git://github.com/prof7bit/goxtool.git</pre>
 <br />
-This will create a folder named <span style="font-family: monospace;">goxtool-master</span>
+This will create a folder named&nbsp;<span class="codeword">goxtool-master</span>
 containing all the needed files. Thats all, now it is installed and
 ready to use. You can now already watch live market data (without any
 trading functions being enabled), you can later add a MtGox API-key to
@@ -37,7 +37,7 @@ next step, start it without an account, just to make sure everything
 works.<br />
 <h2>How to start it
 </h2>
-change into to the <span style="font-family: monospace;">goxtool-master</span>
+change into to the&nbsp;<span class="codeword">goxtool-master</span>
 folder that was created in the previous step and start
 goxtool.py:<br />
 <br />
@@ -52,18 +52,22 @@ account):<br />
 strategy module (see advanced
 usage)</li>
 </ul>
-There is also a <span style="font-family: monospace;">goxtool.ini</span>
-file, it will be created when you first start it. In the .ini file
+There is also a&nbsp;<span class="codeword">goxtool.ini</span>
+file, it will be created when you first start it. In the&nbsp;<span
+ class="codeword">.ini</span> file
 there are some parameters you can change, for example the currency you
 want to trade BTC against or some parameters regarding the network
-protocol. Some of the .ini settings can be overridden by command line
-options (use the --help option to see a list). The default protocol is
-websocket, the alternative would be socketio, goxtool implements both
+protocol. Some of the&nbsp;<span class="codeword">.ini</span> settings
+can be overridden by command line
+options (use the&nbsp;<span class="codeword">--help</span> option to
+see a list). The default protocol is&nbsp;<span class="codeword">websocket</span>,
+the alternative would be&nbsp;<span class="codeword">socketio</span>,
+goxtool implements both
 protocols but their socketio server is very unreliable, so I recommend
 leaving it at the default.<br />
 <h2>How to connect it to your MtGox account</h2>
 Do the following:<br />
-<pre>./goxtool.py --add-secret<br /></pre>
+<pre>./goxtool.py --add-secret</pre>
 This will now ask you for key, secret and
 password. Key and secret
 belong to a shared secret that is created by MtGox to authenticate your
@@ -87,7 +91,8 @@ for "Secret", copy&amp;paste the Secret into the terminal, press enter
 and now it will ask you for a passphrase. It is important to understand
 what is going on here. The Key/Secret from above must under no
 circumstances ever come into the wrong hands, therefore goxtool won't
-just store them in the .ini file, goxtool will encrypt it and thats
+just store them in the&nbsp;<span class="codeword">.ini</span> file,
+goxtool will encrypt it and thats
 what the passphrase is needed for. Choose a secure passphrase (it will
 ask you twice to make sure there is no typo), you will also not see
 anything in the console (not even "*") while typing, this is not a bug,
@@ -98,7 +103,7 @@ and exit.<br />
 <br />
 Now start goxtool again:<br />
 <br />
-<pre>./goxtool.py<br />enter passphrase for secret: <br /></pre>
+<pre>./goxtool.py<br />enter passphrase for secret: </pre>
 From now on every time you start goxtool it will ask you for the
 passphrase in order to be able to decrypt and use the secret. Enter
 your passphrase, press enter. Now goxtool will start and you will
@@ -131,56 +136,65 @@ All dialogs can be closed with&nbsp;<span class="keycmd">F10</span>
 or&nbsp;<span class="keycmd">ESC</span>.<br />
 <h2>Strategy module, strategy.py</h2>
 You can write your own trading bots. There is a file named strategy.py,
-it contains a class <span style="font-family: monospace;">Strategy()</span>
+it contains a class&nbsp;<span class="codeword">Strategy()</span>
 which constitutes a trading bot that by default does nothing (its an
 empty skeleton). It has event methods (slots) connected to signals that
 will be fired when certain events occur. From within these methods you
-can then do arbitrary stuff (peek around in <span
- style="font-family: monospace;">gox.orderbook</span> to see where bids
-and asks are located, call <span style="font-family: monospace;">gox.buy()</span>,
-<span style="font-family: monospace;">gox.sell()</span>&nbsp; or <span
- style="font-family: monospace;">gox.cancel()</span> methods to build a
+can then do arbitrary stuff (peek around in&nbsp;<span class="codeword">gox.orderbook</span>
+to see where bids
+and asks are located, call&nbsp;<span class="codeword">gox.buy()</span>,&nbsp;<span
+ class="codeword">gox.sell()</span>&nbsp; or&nbsp;<span class="codeword">gox.cancel()</span>
+methods to build a
 fully automated trading bot or you can use the key press slot (it will
-be called on all letter keys except "l" and "q") to build a
+be called on all letter keys except&nbsp;<span class="keycmd">l</span>
+and&nbsp;<span class="keycmd">q</span>) to build a
 semi-automatic bot that reacts to key presses or to influence
 parameters
 of your bot or anything else you can imagine. Examples of simple bots
 will soon follow.<br />
 <br />
 If you decide to make serious use of this then please create a new
-python file for your strategy (make a copy of the default strategy.py
-skeleton), give it a different name and leave strategy.py alone so it
+python file for your strategy (make a copy of the default&nbsp;<span
+ class="codeword">strategy.py</span>
+skeleton), give it a different name and leave&nbsp;<span
+ class="codeword">strategy.py</span> alone so it
 won't collide with upstream changes you pull from github. By default
-goxtool will load strategy.py but you can start it with the --strategy
-command line option to specify your own strategy:<br />
+goxtool will load&nbsp;<span class="codeword">strategy.py</span> but
+you can start it with the&nbsp;<span class="codeword">--strategy</span>
+command line option to specify your own strategy module:<br />
 <pre>./goxtool --strategy=mybot.py</pre>
-You can even edit the file while goxtool is running and then reload it,
+You can even edit the file while goxtool is running and then reload it
+at runtime (this can be very useful),
 just press the&nbsp;<span class="keycmd">l</span> key (lowercase L) and
 it will do the following things:<br />
 <ul>
-  <li>free the currently running instance of Strategy() (your __del__()
+  <li>free the currently running instance of&nbsp;<span class="codeword">Strategy()</span>
+(your&nbsp;<span class="codeword">__del__()</span>
 method will be called)</li>
   <li>re-import the changed module file</li>
-  <li>create a new instance of Strategy() and call your __init__()
-again.<br />
-  </li>
+  <li>create a new instance of&nbsp;<span class="codeword">Strategy()</span>
+and call your<span class="codeword">__init__()</span>
+again. </li>
 </ul>
-You should persist the state of your bot (if needed) during __del__()
-and reload it in __init__(). Trading functions do NOT block, this means
+You should persist the state of your bot (if needed) during&nbsp;<span
+ class="codeword">__del__()</span>
+and reload it in&nbsp;<span class="codeword">__init__()</span>. <br />
+<br />
+Trading functions do NOT block, this means
 they also won't return the MtGox order ID, you need to find your own
 way of remembering which orders you have sent already. A few moments
 (seconds or minutes) after you have sent them they will be acked by
-MtGox and it will fire <span style="font-family: monospace;">orderbook.signal_changed()
-</span>and when this happens you will find it in the <span
- style="font-family: monospace;">gox.orderbook.owns</span> list and it
+MtGox and it will fire&nbsp;<span class="codeword">orderbook.signal_changed()</span><span
+ style="font-family: monospace;">
+</span>and when this happens you will find it in the&nbsp;<span
+ class="codeword">gox.orderbook.owns</span> list and it
 will have an official order ID. I know this is not optimal (because
 this part of the code is not yet complete, eventually there will be
-dedicated signals to notify your bot about the results of its trading
+dedicated signals to notify your bot about the results of trading
 commands) and also this document is not yet a complete documentation.
 If you really want to dive into this: use the source, Luke.<br />
 <br />
 <br />
-(TODO: finish writing this howto)<br />
-<br />
+(TODO: finish writing this howto)
 </body>
 </html>
