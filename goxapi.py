@@ -1178,7 +1178,7 @@ class OrderBook(BaseObject):
                             self.bids.pop(0)
                             self._update_total_bid(voldiff, price)
                 if len(self.bids):
-                    self.ask = self.asks[0].price
+                    self.bid = self.bids[0].price
 
         self.signal_changed(self, ())
 
