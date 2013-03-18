@@ -200,7 +200,21 @@ this part of the code is not yet complete, eventually there will be
 dedicated signals to notify your bot about the results of trading
 commands) and also this document is not yet a complete documentation.
 If you really want to dive into this: use the source, Luke.<br />
-<br />
+<h2>How to keep it up to date</h2>
+Occasionally I will commit bugfixes, improvements, etc. To update your
+copy of goxtool (assuming you previously installed it with git clone
+and not by just downloading a zip file) do the following:<br />
+<pre>git pull</pre>
+and if that complains because of local uncommitted changes because you
+edited the strategy.py module or did other changes to the code then try
+this:<br />
+<pre>git stash<br />git pull<br />git stash pop</pre>
+Of course you could have also have followed my previous advise to not
+do anything other than simple throw-away experiments in strategy.py so
+you can always git reset --hard if everything else fails and use a
+separate file (and probably even separate git branches) for serious bot
+development but this is outside the scope of this document, there exist
+specialized howtos for git and github elsewhere.<br />
 <br />
 (TODO: finish writing this howto)
 </body>
