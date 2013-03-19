@@ -40,6 +40,7 @@ import inspect
 import io
 import json
 import logging
+import Queue
 import time
 import traceback
 import threading
@@ -54,6 +55,7 @@ input = raw_input # pylint: disable=W0622,C0103
 FORCE_PROTOCOL = ""
 FORCE_NO_FULLDEPTH = False
 FORCE_NO_HISTORY = False
+FORCE_HTTP_API = False
 
 def int2str(value_int, currency):
     """return currency integer formatted as a string"""
@@ -126,6 +128,7 @@ class GoxConfig(SafeConfigParser):
     _DEFAULTS = [["gox", "currency", "USD"]
                 ,["gox", "use_ssl", "True"]
                 ,["gox", "use_plain_old_websocket", "True"]
+                ,["gox", "use_http_api", "False"]
                 ,["gox", "load_fulldepth", "True"]
                 ,["gox", "load_history", "True"]
                 ,["gox", "secret_key", ""]
@@ -527,7 +530,10 @@ class BaseClient(BaseObject):
         self.secret = secret
         self.config = config
         self.socket = None
+        self.http_requests = Queue.Queue()
+
         self._recv_thread = None
+        self._http_thread = None
         self._terminating = False
 
         self._time_last_orderlag = 0
@@ -536,6 +542,7 @@ class BaseClient(BaseObject):
     def start(self):
         """start the client"""
         self._recv_thread = start_thread(self._recv_thread_func)
+        self._http_thread = start_thread(self._http_thread_func)
 
     def stop(self):
         """stop the client"""
@@ -552,7 +559,10 @@ class BaseClient(BaseObject):
 
     def request_order_lag(self):
         """request the current order-lag"""
-        self.send_signed_call("order/lag", {}, "order_lag")
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+            self.enqueue_http_request("generic/order/lag", {}, "order_lag")
+        else:
+            self.send_signed_call("order/lag", {}, "order_lag")
         self._time_last_orderlag = time.time()
 
     def request_fulldepth(self):
@@ -605,9 +615,14 @@ class BaseClient(BaseObject):
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
 
-        self.send_signed_call("private/info", {}, "info")
-        self.send_signed_call("private/orders", {}, "orders")
-        self.send_signed_call("private/idkey", {}, "idkey")
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+            self.enqueue_http_request("generic/private/orders", {}, "orders")
+            self.enqueue_http_request("generic/private/idkey", {}, "idkey")
+            self.enqueue_http_request("generic/private/info", {}, "info")
+        else:
+            self.send_signed_call("private/orders", {}, "orders")
+            self.send_signed_call("private/idkey", {}, "idkey")
+            self.send_signed_call("private/info", {}, "info")
 
         if self.config.get_bool("gox", "load_fulldepth"):
             if not FORCE_NO_FULLDEPTH:
@@ -616,6 +631,30 @@ class BaseClient(BaseObject):
         if self.config.get_bool("gox", "load_history"):
             if not FORCE_NO_HISTORY:
                 self.request_history()
+
+    def _http_thread_func(self):
+        """send queued http requests to the http API (only used when
+        http api is forced, normally this is much slower)"""
+        while not self._terminating:
+            (api_endpoint, params, reqid) = self.http_requests.get(True)
+            try:
+                answer = self.http_signed_call(api_endpoint, params)
+                if answer["result"] == "success":
+                    # the fiollowing will reformat the answer in such a way
+                    # that we can pass it directly to signal_recv()
+                    # as if it had come directly from the websocket
+                    ret = {"op": "result", "id": reqid, "result": answer["return"]}
+                    self.signal_recv(self, (json.dumps(ret)))
+                else:
+                    self.debug(reqid, answer)
+            except Exception as exc:
+                self.debug(api_endpoint, params, reqid, exc)
+            self.http_requests.task_done()
+
+    def enqueue_http_request(self, api_endpoint, params, reqid):
+        """enqueue a request for sending to the HTTP API, returns
+        immediately, behaves exactly like sending it over the websocket."""
+        self.http_requests.put((api_endpoint, params, reqid))
 
     def http_signed_call(self, api_endpoint, params):
         """send a signed request to the HTTP API"""
@@ -637,10 +676,11 @@ class BaseClient(BaseObject):
             'Rest-Sign': base64.b64encode(sign)
         }
 
+        self.debug("### (http) calling %s" % api_endpoint)
         req = URLRequest("https://" + self.HTTP_HOST + "/api/1/" \
             + api_endpoint, post, headers)
-        res = urlopen(req, post)
-        return json.load(res)
+        with contextlib.closing(urlopen(req, post)) as res:
+            return json.load(res)
 
     def send_signed_call(self, api_endpoint, params, reqid):
         """send a signed (authenticated) API call over the socket.io.
@@ -668,7 +708,7 @@ class BaseClient(BaseObject):
         sign = hmac.new(base64.b64decode(sec), call, hashlib.sha512).digest()
         signedcall = key.replace("-", "").decode("hex") + sign + call
 
-        self.debug("### calling %s" % api_endpoint)
+        self.debug("### (socket) calling %s" % api_endpoint)
         self.send(json.dumps({
             "op"      : "call",
             "call"    : base64.b64encode(signedcall),
@@ -949,6 +989,7 @@ class Gox(BaseObject):
         elif reqid == "order_lag":
             lag_usec = result["lag"]
             lag_text = result["lag_text"]
+            self.debug("### got order lag: %s" % lag_text)
             self.order_lag = lag_usec
             self.signal_orderlag(self, (lag_usec, lag_text))
 
@@ -962,7 +1003,7 @@ class Gox(BaseObject):
             price = int(parts[2])
             volume = int(parts[3])
             oid = result
-            self.debug("order/add has been acked by server:", typ, price, volume, oid)
+            self.debug("### got ack for order/add:", typ, price, volume, oid)
             self.orderbook.add_own(Order(price, volume, typ, oid, "pending"))
 
         elif "order_cancel:" in reqid:
@@ -971,7 +1012,7 @@ class Gox(BaseObject):
             # do nothing now, let things happen in the user_order message
             parts = reqid.split(":")
             oid = parts[1]
-            self.debug("order/cancel has been acked by server:", oid)
+            self.debug("### got ack for order/cancel:", oid)
 
         else:
             self.debug("_on_op_result() ignoring:", msg)
@@ -1069,19 +1110,25 @@ class Gox(BaseObject):
 
     def _send_order_add(self, typ, price, volume):
         """send an order"""
-        self.client.send_signed_call(
-            "order/add",
-            {"type": typ, "price_int": price, "amount_int": volume},
-            "order_add:%s:%d:%d" % (typ, price, volume)
-        )
+        params = {"type": typ, "price_int": price, "amount_int": volume}
+        reqid = "order_add:%s:%d:%d" % (typ, price, volume)
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+            api = "BTC%s/private/order/add" % self.currency
+            self.client.enqueue_http_request(api, params, reqid)
+        else:
+            api = "order/add"
+            self.client.send_signed_call(api, params, reqid)
 
     def _send_order_cancel(self, oid):
         """cancel an order"""
-        self.client.send_signed_call(
-            "order/cancel",
-            {"oid": oid},
-            "order_cancel:%s" % oid
-        )
+        params = {"oid": oid}
+        reqid = "order_cancel:%s" % oid
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+            api = "BTC%s/private/order/cancel" % self.currency
+            self.client.enqueue_http_request(api, params, reqid)
+        else:
+            api = "order/cancel" % self.currency
+            self.client.send_signed_call(api, params, reqid)
 
 
 class Order:

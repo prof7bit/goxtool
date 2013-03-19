@@ -1012,6 +1012,8 @@ def main():
         help="do not download full depth (useful for debugging)")
     argp.add_argument('--no-history', action="store_true", default="",
         help="do not download full history (useful for debugging)")
+    argp.add_argument('--use-http', action="store_true", default="",
+        help="use http api for trading (useful when socketio is lagging like hell")
     args = argp.parse_args()
 
     config = goxapi.GoxConfig("goxtool.ini")
@@ -1024,6 +1026,7 @@ def main():
         goxapi.FORCE_PROTOCOL = args.protocol
         goxapi.FORCE_NO_FULLDEPTH = args.no_fulldepth
         goxapi.FORCE_NO_HISTORY = args.no_history
+        goxapi.FORCE_HTTP_API = args.use_http
         if secret.prompt_decrypt() != secret.S_FAIL_FATAL:
             curses.wrapper(curses_loop)
             print
