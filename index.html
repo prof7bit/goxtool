@@ -87,9 +87,10 @@ socketio server (the reason is not the protocol itself, its their
 implementation at MtGox). The disadvantage of the websocket server is
 that it has a lot more downtimes, often for many hours and you have to
 wait until someone wakes up in Tokyo to reset it while the socketio
-server is working most of the time, but its incredibly slow and most of
-the time it is not reasonably possible to send trading commands over
-the socketio server, therefore here we must combine it with the
+server is working most of the time. Unfortunately socketio is
+incredibly slow and most of
+the time it is not reasonably possible to send trading commands,
+therefore here we must combine socketio with the
 --use-http option.<br />
 <br />
 This means there are essentially only two reasonable combinations of
