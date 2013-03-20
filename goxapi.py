@@ -571,7 +571,7 @@ class BaseClient(BaseObject):
 
     def request_order_lag(self):
         """request the current order-lag"""
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
             self.enqueue_http_request("generic/order/lag", {}, "order_lag")
         else:
             self.send_signed_call("order/lag", {}, "order_lag")
@@ -627,7 +627,7 @@ class BaseClient(BaseObject):
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
 
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
             self.enqueue_http_request("generic/private/orders", {}, "orders")
             self.enqueue_http_request("generic/private/idkey", {}, "idkey")
             self.enqueue_http_request("generic/private/info", {}, "info")
@@ -734,7 +734,7 @@ class BaseClient(BaseObject):
         """send an order"""
         params = {"type": typ, "price_int": price, "amount_int": volume}
         reqid = "order_add:%s:%d:%d" % (typ, price, volume)
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
             api = "BTC%s/private/order/add" % self.currency
             self.enqueue_http_request(api, params, reqid)
         else:
@@ -745,7 +745,7 @@ class BaseClient(BaseObject):
         """cancel an order"""
         params = {"oid": oid}
         reqid = "order_cancel:%s" % oid
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
             api = "BTC%s/private/order/cancel" % self.currency
             self.enqueue_http_request(api, params, reqid)
         else:
