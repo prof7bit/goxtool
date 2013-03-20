@@ -659,8 +659,10 @@ class BaseClient(BaseObject):
                     self.signal_recv(self, (json.dumps(ret)))
                 else:
                     self.debug(reqid, answer)
+                    #self.enqueue_http_request((api_endpoint, params, reqid))
             except Exception as exc:
                 self.debug(api_endpoint, params, reqid, exc)
+                self.enqueue_http_request((api_endpoint, params, reqid))
             self.http_requests.task_done()
 
     def enqueue_http_request(self, api_endpoint, params, reqid):
