@@ -220,17 +220,41 @@ at runtime (this can be very useful),
 just press the&nbsp;<span class="keycmd">l</span> key (lowercase L) and
 it will do the following things:<br />
 <ul>
+  <li>emit signal _strategy_unload, this will call&nbsp;<span
+ class="codeword">slot_before_unload()</span><br />
+  </li>
   <li>free the currently running instance of&nbsp;<span class="codeword">Strategy()</span>
 (your&nbsp;<span class="codeword">__del__()</span>
-method will be called)</li>
+method <span style="font-weight: bold;">should</span> be called)</li>
   <li>re-import the changed module file</li>
   <li>create a new instance of&nbsp;<span class="codeword">Strategy()</span>
 and call your<span class="codeword">__init__()</span>
 again. </li>
 </ul>
-You should persist the state of your bot (if needed) during&nbsp;<span
- class="codeword">__del__()</span>
-and reload it in&nbsp;<span class="codeword">__init__()</span>. <br />
+You should persist the state of your bot (if needed) <span
+ style="font-family: monospace;"><span style="font-style: italic;"><span
+ style="font-weight: bold;">in </span></span></span><span
+ class="codeword">slot_before_unload()</span><span class="codeword"></span>
+and reload it in&nbsp;<span class="codeword">__init__()</span>. Leave
+the&nbsp;<span class="codeword">__del__()</span> method alone, its only
+there to print a log mesage to debug proper unloading!<br />
+<br />
+Please make sure that you can see the debug output from the <span
+ class="codeword">__del__()</span> method in the log when the strategy
+is reloading, you must be sure its able to free and garbage collect
+your strategy! If you instantiate any circular references, even
+something as innocent as a double linked list or even just an object
+holding a reference to the strategy then this will effectively keep
+python from being able to garbage-collect it and hold it in memory
+indefinitely (and keep sending it signals!). <br />
+<br />
+Use the <span class="codeword">slot_before_unload()</span> method
+to&nbsp;<span class="codeword">del</span> everything in your strategy
+that might hold any circular references. You can check that it works if
+you see the debug output&nbsp; of <span class="codeword">__del__()</span>
+in the log scrolling by when you press&nbsp;<span class="keycmd">l</span>
+to reload it, the fact that&nbsp;<span class="codeword">__del__()</span>
+was called is proof that it was properly garbage-collected.<br />
 <br />
 Trading functions do NOT block, this means
 they also won't return the MtGox order ID, you need to find your own
