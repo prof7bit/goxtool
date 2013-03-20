@@ -716,6 +716,29 @@ class BaseClient(BaseObject):
             "context" : "mtgox.com"
         }))
 
+    def send_order_add(self, typ, price, volume):
+        """send an order"""
+        params = {"type": typ, "price_int": price, "amount_int": volume}
+        reqid = "order_add:%s:%d:%d" % (typ, price, volume)
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+            api = "BTC%s/private/order/add" % self.currency
+            self.enqueue_http_request(api, params, reqid)
+        else:
+            api = "order/add"
+            self.send_signed_call(api, params, reqid)
+
+    def send_order_cancel(self, oid):
+        """cancel an order"""
+        params = {"oid": oid}
+        reqid = "order_cancel:%s" % oid
+        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
+            api = "BTC%s/private/order/cancel" % self.currency
+            self.enqueue_http_request(api, params, reqid)
+        else:
+            api = "order/cancel"
+            self.send_signed_call(api, params, reqid)
+
+
 
 class WebsocketClient(BaseClient):
     """this implements a connection to MtGox through the older (but faster)
@@ -763,7 +786,10 @@ class WebsocketClient(BaseClient):
 
     def send(self, json_str):
         """send the json encoded string over the websocket"""
-        self.socket.send(json_str)
+        try:
+            self.socket.send(json_str)
+        except Exception as exc:
+            self.debug(exc)
 
 
 class SocketIOClient(BaseClient):
@@ -833,7 +859,10 @@ class SocketIOClient(BaseClient):
         with the 1::/mtgox: that is needed for the socket.io protocol
         (as opposed to plain websockts) and the underlying websocket
         will then do the needed framing on top of that."""
-        self.socket.send("4::/mtgox:" + json_str)
+        try:
+            self.socket.send("4::/mtgox:" + json_str)
+        except Exception as exc:
+            self.debug(exc)
 
 
 # pylint: disable=R0902
@@ -855,7 +884,11 @@ class Gox(BaseObject):
         self.signal_wallet          = Signal()
         self.signal_userorder       = Signal()
         self.signal_orderlag        = Signal()
+
+        # the following are not fired by gox itself but by the
+        # application controlling it to pass some of its events
         self.signal_keypress        = Signal()
+        self.signal_strategy_unload = Signal()
 
         self._idkey      = ""
         self.wallet = {}
@@ -898,7 +931,7 @@ class Gox(BaseObject):
 
     def order(self, typ, price, volume):
         """place pending order. If price=0 then it will be filled at market"""
-        self._send_order_add(typ, price, volume)
+        self.client.send_order_add(typ, price, volume)
 
     def buy(self, price, volume):
         """new buy order, if price=0 then buy at market"""
@@ -910,7 +943,7 @@ class Gox(BaseObject):
 
     def cancel(self, oid):
         """cancel order"""
-        self._send_order_cancel(oid)
+        self.client.send_order_cancel(oid)
 
     def cancel_by_price(self, price):
         """cancel all orders at price"""
@@ -1108,29 +1141,6 @@ class Gox(BaseObject):
         # we should log this, helps with debugging
         self.debug(msg)
 
-    def _send_order_add(self, typ, price, volume):
-        """send an order"""
-        params = {"type": typ, "price_int": price, "amount_int": volume}
-        reqid = "order_add:%s:%d:%d" % (typ, price, volume)
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
-            api = "BTC%s/private/order/add" % self.currency
-            self.client.enqueue_http_request(api, params, reqid)
-        else:
-            api = "order/add"
-            self.client.send_signed_call(api, params, reqid)
-
-    def _send_order_cancel(self, oid):
-        """cancel an order"""
-        params = {"oid": oid}
-        reqid = "order_cancel:%s" % oid
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http"):
-            api = "BTC%s/private/order/cancel" % self.currency
-            self.client.enqueue_http_request(api, params, reqid)
-        else:
-            api = "order/cancel" % self.currency
-            self.client.send_signed_call(api, params, reqid)
-
-
 class Order:
     """represents an order in the orderbook"""
 
@@ -1287,6 +1297,8 @@ class OrderBook(BaseObject):
             self._update_total_bid(volume, price)
             self.bids.insert(0, Order(price, volume, "bid"))
 
+        self.bid = self.bids[0].price
+        self.ask = self.asks[0].price
         self.signal_changed(self, ())
 
     def _repair_crossed_bids(self, bid):

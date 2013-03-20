@@ -909,6 +909,7 @@ class StrategyManager():
 
     def unload(self):
         """unload the strategy, will trigger its the __del__ method"""
+        self.gox.signal_strategy_unload(self, None)
         self.strategy_object = None
 
     def reload(self):
@@ -984,6 +985,8 @@ def main():
         except KeyboardInterrupt:
             gox.debug("got Ctrl+C, trying to shut down cleanly.")
             gox.debug("Hint: did you know you can also exit with 'q'?")
+        except Exception:
+            gox.debug(traceback.format_exc())
 
         strategy_manager.unload()
         gox.stop()
