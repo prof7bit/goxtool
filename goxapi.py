@@ -519,6 +519,9 @@ class BaseClient(BaseObject):
     WEBSOCKET_HOST = "websocket.mtgox.com"
     HTTP_HOST = "data.mtgox.com"
 
+    _last_nonce = 0
+    _nonce_lock = threading.Lock()
+
     def __init__(self, currency, secret, config):
         BaseObject.__init__(self)
 
@@ -556,6 +559,15 @@ class BaseClient(BaseObject):
         """there exist 2 subtly different ways to send a string over a
         websocket. Each client class will override this send method"""
         raise NotImplementedError()
+
+    def get_nonce(self):
+        """produce a unique nonce that is guaranteed to be ever increasing"""
+        with self._nonce_lock:
+            nonce = int(time.time() * 1E6)
+            if nonce <= self._last_nonce:
+                nonce = self._last_nonce + 1
+            self._last_nonce = nonce
+            return nonce
 
     def request_order_lag(self):
         """request the current order-lag"""
@@ -665,7 +677,7 @@ class BaseClient(BaseObject):
         key = self.secret.key
         sec = self.secret.secret
 
-        params["nonce"] = str(int(time.time() * 1E6))
+        params["nonce"] = self.get_nonce()
         post = urlencode(params)
         # pylint: disable=E1101
         sign = hmac.new(base64.b64decode(sec), post, hashlib.sha512).digest()
@@ -693,7 +705,7 @@ class BaseClient(BaseObject):
         key = self.secret.key
         sec = self.secret.secret
 
-        nonce = str(int(time.time() * 1E6))
+        nonce = self.get_nonce()
 
         call = json.dumps({
             "id"       : reqid,
