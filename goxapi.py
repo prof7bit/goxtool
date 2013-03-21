@@ -1002,11 +1002,15 @@ class Gox(BaseObject):
             handler(msg)
 
     def _on_op_error(self, msg):
-        """handle error mesages (op=error)"""
+        """handle error mesages (op:error)"""
         self.debug("_on_op_error()", msg)
 
+    def _on_op_subscribe(self, msg):
+        """handle subscribe messages (op:subscribe)"""
+        self.debug("_on_op_subscribe()", msg)
+
     def _on_op_result(self, msg):
-        """handle result of authenticated API call (op=result, id=xxxxxx)"""
+        """handle result of authenticated API call (op:result, id:xxxxxx)"""
         result = msg["result"]
         reqid = msg["id"]
 
@@ -1399,7 +1403,7 @@ class OrderBook(BaseObject):
                     level.volume = total_vol
                 self._update_total_ask(voldiff)
                 return
-            if level.price > price:
+            if level.price > price and total_vol > 0:
                 # insert before here and return
                 lnew = Order(price, total_vol, "ask")
                 self.asks.insert(i, lnew)
@@ -1407,9 +1411,10 @@ class OrderBook(BaseObject):
                 return
 
         # still here? -> end of list or empty list.
-        lnew = Order(price, total_vol, "ask")
-        self.asks.append(lnew)
-        self._update_total_ask(total_vol)
+        if total_vol > 0:
+            lnew = Order(price, total_vol, "ask")
+            self.asks.append(lnew)
+            self._update_total_ask(total_vol)
 
     def _update_bids(self, price, total_vol):
         """update volume at this price level, remove entire level
@@ -1425,7 +1430,7 @@ class OrderBook(BaseObject):
                     level.volume = total_vol
                 self._update_total_bid(voldiff, price)
                 return
-            if level.price < price:
+            if level.price < price and total_vol > 0:
                 # insert before here and return
                 lnew = Order(price, total_vol, "ask")
                 self.bids.insert(i, lnew)
@@ -1433,9 +1438,10 @@ class OrderBook(BaseObject):
                 return
 
         # still here? -> end of list or empty list.
-        lnew = Order(price, total_vol, "ask")
-        self.bids.append(lnew)
-        self._update_total_bid(total_vol, price)
+        if total_vol > 0:
+            lnew = Order(price, total_vol, "ask")
+            self.bids.append(lnew)
+            self._update_total_bid(total_vol, price)
 
     def _update_total_ask(self, volume):
         """update total BTC on the ask side"""
