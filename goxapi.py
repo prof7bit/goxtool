@@ -516,6 +516,7 @@ class BaseClient(BaseObject):
     """abstract base class for SocketIOClient and WebsocketClient"""
 
     SOCKETIO_HOST = "socketio.mtgox.com"
+    SOCKETIO_HOST_BETA = "socketio-beta.mtgox.com"
     WEBSOCKET_HOST = "websocket.mtgox.com"
     HTTP_HOST = "data.mtgox.com"
 
@@ -812,12 +813,75 @@ class WebsocketClient(BaseClient):
             self.debug(exc)
 
 
+class SocketIO(websocket.WebSocket):
+    """this websocket class has a different connect method so that it can
+    be used for connecting to socketio. It will do the initial HTTP request
+    with keep-alive and then use that open socket to upgrade to websocklet"""
+    def __init__(self, get_mask_key = None):
+        websocket.WebSocket.__init__(self, get_mask_key)
+
+    def connect(self, url, **options):
+        """connect to socketio and then upgrade to websocket transport. Example:
+        connect('wss://websocket.mtgox.com/socket.io/1', query='Currency=EUR')"""
+
+        def read_block(sock):
+            """read from the socket until empty line, return list of lines"""
+            lines = []
+            line = ""
+            while True:
+                res = sock.recv(1)
+                line += res
+                if res == "":
+                    return None
+                if res == "\n":
+                    line = line.strip()
+                    if line == "":
+                        return lines
+                    lines.append(line)
+                    line = ""
+
+        # pylint: disable=W0212
+        hostname, port, resource, is_secure = websocket._parse_url(url)
+        self.sock.connect((hostname, port))
+        if is_secure:
+            self.io_sock = websocket._SSLSocketWrapper(self.sock)
+
+        path_a = resource
+        if "query" in options:
+            path_a += "?" + options["query"]
+        self.io_sock.send("GET %s HTTP/1.1\r\n" % path_a)
+        self.io_sock.send("Host: %s:%d\r\n" % (hostname, port))
+        self.io_sock.send("User-Agent: goxtool.py\r\n")
+        self.io_sock.send("Accept: text/plain\r\n")
+        self.io_sock.send("Connection: keep-alive\r\n")
+        self.io_sock.send("\r\n")
+
+        headers = read_block(self.io_sock)
+        if not headers:
+            raise IOError("disconnected while reading headers")
+        if not "200" in headers[0]:
+            raise IOError("wrong answer: %s" % headers[0])
+        result = read_block(self.io_sock)
+        if not result:
+            raise IOError("disconnected while reading socketio session ID")
+        if len(result) != 3:
+            raise IOError("invalid response from socket.io server")
+
+        ws_id = result[1].split(":")[0]
+        resource += "/websocket/" + ws_id
+        if "query" in options:
+            resource += "?" + options["query"]
+
+        self._handshake(hostname, port, resource, **options)
+
+
 class SocketIOClient(BaseClient):
     """this implements a connection to MtGox using the new socketIO protocol.
     This should replace the older plain websocket API"""
 
     def __init__(self, currency, secret, config):
         BaseClient.__init__(self, currency, secret, config)
+        self.hostname = self.SOCKETIO_HOST
 
     def _recv_thread_func(self):
         """this is the main thread that is running all the time. It will
@@ -826,30 +890,20 @@ class SocketIOClient(BaseClient):
         and all received json strings are dispathed with signal_recv."""
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
-        htp = {True: "https://", False: "http://"}[use_ssl]
         while not self._terminating: #loop 0 (connect, reconnect)
             try:
                 self.debug("*** Hint: connection problems? try: use_plain_old_websocket=True")
-                self.debug("trying Socket.IO: %s ..." % self.SOCKETIO_HOST)
+                self.debug("trying Socket.IO: %s ..." % self.hostname)
 
-                url = urlopen(
-                    htp + self.SOCKETIO_HOST + "/socket.io/1?Currency=" +
-                    self.currency, timeout=20)
-                params = url.read()
-                url.close()
-
-                ws_id = params.split(":")[0]
-                ws_url = wsp + self.SOCKETIO_HOST + "/socket.io/1/websocket/" \
-                     + ws_id + "?Currency=" + self.currency
-
-                self.debug("trying Websocket: %s ..." % ws_url)
-                self.socket = websocket.WebSocket()
-                self.socket.connect(ws_url)
+                self.socket = SocketIO()
+                self.socket.connect(wsp + self.hostname + "/socket.io/1",
+                    query="Currency=" + self.currency)
 
                 self.debug("connected")
                 self.socket.send("1::/mtgox")
-                self.socket.recv() # '1::'
-                self.socket.recv() # '1::/mtgox'
+
+                self.debug(self.socket.recv())
+                self.debug(self.socket.recv())
 
                 self.debug("subscribing to channels")
                 self.channel_subscribe()
@@ -869,7 +923,8 @@ class SocketIOClient(BaseClient):
 
             except Exception as exc:
                 if not self._terminating:
-                    self.debug(exc, "reconnecting in 5 seconds...")
+                    self.debug(exc.__class__.__name__, exc, \
+                        "reconnecting in 5 seconds...")
                     if self.socket:
                         self.socket.close()
                     time.sleep(5)
@@ -883,6 +938,12 @@ class SocketIOClient(BaseClient):
             self.socket.send("4::/mtgox:" + json_str)
         except Exception as exc:
             self.debug(exc)
+
+class SocketIOBetaClient(SocketIOClient):
+    """experimental client for the beta websocket"""
+    def __init__(self, currency, secret, config):
+        SocketIOClient.__init__(self, currency, secret, config)
+        self.hostname = self.SOCKETIO_HOST_BETA
 
 
 # pylint: disable=R0902
@@ -926,14 +987,18 @@ class Gox(BaseObject):
         self.orderbook.signal_debug.connect(self.signal_debug)
 
         use_websocket = self.config.get_bool("gox", "use_plain_old_websocket")
-        if FORCE_PROTOCOL == "socketio":
+        if "socketio" in FORCE_PROTOCOL:
             use_websocket = False
         if FORCE_PROTOCOL == "websocket":
             use_websocket = True
         if use_websocket:
             self.client = WebsocketClient(self.currency, secret, config)
         else:
-            self.client = SocketIOClient(self.currency, secret, config)
+            if FORCE_PROTOCOL == "socketio-beta":
+                self.client = SocketIOBetaClient(self.currency, secret, config)
+            else:
+                self.client = SocketIOClient(self.currency, secret, config)
+
         self.client.signal_debug.connect(self.signal_debug)
         self.client.signal_recv.connect(self.slot_recv)
         self.client.signal_fulldepth.connect(self.signal_fulldepth)
