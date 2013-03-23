@@ -795,6 +795,7 @@ class BaseClient(BaseObject):
     def slot_timer(self, _sender, _data):
         """request order/lag in regular intervals"""
         if time.time() - self._time_last_received > 60:
+            self.debug("did not receive anything for a long time, disconnecting.")
             self.socket.close()
             self.connected = False
         self.request_order_lag()
