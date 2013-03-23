@@ -569,6 +569,7 @@ class BaseClient(BaseObject):
         self._http_thread = None
         self._terminating = False
         self.connected = False
+        self._time_last_received = 0
 
     def start(self):
         """start the client"""
@@ -793,6 +794,9 @@ class BaseClient(BaseObject):
 
     def slot_timer(self, _sender, _data):
         """request order/lag in regular intervals"""
+        if time.time() - self._time_last_received > 60:
+            self.socket.close()
+            self.connected = False
         self.request_order_lag()
 
 
@@ -828,6 +832,7 @@ class WebsocketClient(BaseClient):
                 self.debug("waiting for data...")
                 while not self._terminating: #loop1 (read messages)
                     str_json = self.socket.recv()
+                    self._time_last_received = time.time()
                     if str_json[0] == "{":
                         self.signal_recv(self, (str_json))
 
@@ -948,6 +953,7 @@ class SocketIOClient(BaseClient):
                 self.debug("waiting for data...")
                 while not self._terminating: #loop1 (read messages)
                     msg = self.socket.recv()
+                    self._time_last_received = time.time()
                     if msg == "2::":
                         self.debug("### ping -> pong")
                         self.socket.send("2::")
