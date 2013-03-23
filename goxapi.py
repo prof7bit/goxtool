@@ -276,6 +276,32 @@ class BaseObject():
             logging.debug(msg)
 
 
+class Timer(Signal):
+    """a simple timer (used for stuff like keepalive)"""
+
+    def __init__(self, interval):
+        """create a new timer, interval is in seconds"""
+        Signal.__init__(self)
+        self._interval = interval
+        self._timer = None
+        self._start()
+
+    def _fire(self):
+        """fire the signal and restart it"""
+        self.__call__(self, None)
+        self._start()
+
+    def _start(self):
+        """start the timer"""
+        self._timer = threading.Timer(self._interval, self._fire)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def cancel(self):
+        """cancel the timer"""
+        self._timer.cancel()
+
+
 class Secret:
     """Manage the MtGox API secret. This class has methods to decrypt the
     entries in the ini file and it also provides a method to create these
@@ -530,6 +556,9 @@ class BaseClient(BaseObject):
         self.signal_fulldepth   = Signal()
         self.signal_fullhistory = Signal()
 
+        self._timer = Timer(60)
+        self._timer.connect(self.slot_timer)
+
         self.currency = currency
         self.secret = secret
         self.config = config
@@ -539,9 +568,7 @@ class BaseClient(BaseObject):
         self._recv_thread = None
         self._http_thread = None
         self._terminating = False
-
-        self._time_last_orderlag = 0
-        self.signal_recv.connect(self.slot_recv)
+        self.connected = False
 
     def start(self):
         """start the client"""
@@ -551,10 +578,21 @@ class BaseClient(BaseObject):
     def stop(self):
         """stop the client"""
         self._terminating = True
+        self._timer.cancel()
         if self.socket:
             self.debug("""closing socket""")
             self.socket.sock.close()
         #self._recv_thread.join()
+
+    def _try_send_raw(self, raw_data):
+        """send raw data to the websocket or disconnect and close"""
+        if self.connected:
+            try:
+                self.socket.send(raw_data)
+            except Exception as exc:
+                self.debug(exc)
+                self.connected = False
+                self.socket.close()
 
     def send(self, json_str):
         """there exist 2 subtly different ways to send a string over a
@@ -576,7 +614,6 @@ class BaseClient(BaseObject):
             self.enqueue_http_request("money/order/lag", {}, "order_lag")
         else:
             self.send_signed_call("order/lag", {}, "order_lag")
-        self._time_last_orderlag = time.time()
 
     def request_fulldepth(self):
         """start the fulldepth thread"""
@@ -614,11 +651,6 @@ class BaseClient(BaseObject):
         """this will be executed as the main receiving thread, each type of
         client (websocket or socketio) will implement its own"""
         raise NotImplementedError()
-
-    def slot_recv(self, dummy_sender, dummy_data):
-        """do stuff in regular intervals"""
-        if time.time() - self._time_last_orderlag > 60:
-            self.request_order_lag()
 
     def channel_subscribe(self):
         """subscribe to the needed channels and alo initiate the
@@ -759,6 +791,9 @@ class BaseClient(BaseObject):
             api = "order/cancel"
             self.send_signed_call(api, params, reqid)
 
+    def slot_timer(self, _sender, _data):
+        """request order/lag in regular intervals"""
+        self.request_order_lag()
 
 
 class WebsocketClient(BaseClient):
@@ -785,6 +820,7 @@ class WebsocketClient(BaseClient):
 
                 self.socket = websocket.WebSocket()
                 self.socket.connect(ws_url)
+                self.connected = True
                 self.debug("connected, subscribing needed channels")
                 self.channel_subscribe()
 
@@ -797,6 +833,7 @@ class WebsocketClient(BaseClient):
 
 
             except Exception as exc:
+                self.connected = False
                 if not self._terminating:
                     self.debug(exc, "reconnecting in %i seconds..." % reconnect_time)
                     if self.socket:
@@ -807,16 +844,14 @@ class WebsocketClient(BaseClient):
 
     def send(self, json_str):
         """send the json encoded string over the websocket"""
-        try:
-            self.socket.send(json_str)
-        except Exception as exc:
-            self.debug(exc)
+        self._try_send_raw(json_str)
 
 
 class SocketIO(websocket.WebSocket):
-    """this websocket class has a different connect method so that it can
-    be used for connecting to socketio. It will do the initial HTTP request
-    with keep-alive and then use that open socket to upgrade to websocklet"""
+    """This is the WebSocket() class with added Super Cow Powers. It has a
+    different connect method so that it can connect to socket.io. It will do
+    the initial HTTP request with keep-alive and then use that same socket
+    to upgrade to websocket"""
     def __init__(self, get_mask_key = None):
         websocket.WebSocket.__init__(self, get_mask_key)
 
@@ -882,6 +917,7 @@ class SocketIOClient(BaseClient):
     def __init__(self, currency, secret, config):
         BaseClient.__init__(self, currency, secret, config)
         self.hostname = self.SOCKETIO_HOST
+        self._timer.connect(self.slot_keepalive_timer)
 
     def _recv_thread_func(self):
         """this is the main thread that is running all the time. It will
@@ -899,6 +935,7 @@ class SocketIOClient(BaseClient):
                 self.socket.connect(wsp + self.hostname + "/socket.io/1",
                     query="Currency=" + self.currency)
 
+                self.connected = True
                 self.debug("connected")
                 self.socket.send("1::/mtgox")
 
@@ -922,6 +959,7 @@ class SocketIOClient(BaseClient):
                             self.signal_recv(self, (str_json))
 
             except Exception as exc:
+                self.connected = False
                 if not self._terminating:
                     self.debug(exc.__class__.__name__, exc, \
                         "reconnecting in 5 seconds...")
@@ -934,10 +972,13 @@ class SocketIOClient(BaseClient):
         with the 1::/mtgox: that is needed for the socket.io protocol
         (as opposed to plain websockts) and the underlying websocket
         will then do the needed framing on top of that."""
-        try:
-            self.socket.send("4::/mtgox:" + json_str)
-        except Exception as exc:
-            self.debug(exc)
+        self._try_send_raw("4::/mtgox:" + json_str)
+
+    def slot_keepalive_timer(self, _sender, _data):
+        """send a keepalive, just to make sure our socket is not dead"""
+        self.debug("sending keepalive")
+        self._try_send_raw("2::")
+
 
 class SocketIOBetaClient(SocketIOClient):
     """experimental client for the beta websocket"""
@@ -1072,7 +1113,7 @@ class Gox(BaseObject):
 
     def _on_op_subscribe(self, msg):
         """handle subscribe messages (op:subscribe)"""
-        self.debug("_on_op_subscribe()", msg)
+        self.debug("subscribed channel", msg["channel"])
 
     def _on_op_result(self, msg):
         """handle result of authenticated API call (op:result, id:xxxxxx)"""
@@ -1227,12 +1268,14 @@ class Gox(BaseObject):
 
     def _on_op_remark(self, msg):
         """handler for op=remark messages"""
-        # we should log this, helps with debugging
-        self.debug(msg)
 
         if "success" in msg and not msg["success"]:
             if msg["message"] == "Invalid call":
                 self._on_invalid_call(msg)
+                return
+
+        # we should log this, helps with debugging
+        self.debug(msg)
 
     def _on_invalid_call(self, msg):
         """this comes as an op=remark message and is a strange mystery"""
