@@ -542,7 +542,7 @@ class BaseClient(BaseObject):
     """abstract base class for SocketIOClient and WebsocketClient"""
 
     SOCKETIO_HOST = "socketio.mtgox.com"
-    SOCKETIO_HOST_BETA = "socketio-beta.mtgox.com"
+    SOCKETIO_HOST_OLD = "socketio-old.mtgox.com"
     WEBSOCKET_HOST = "websocket.mtgox.com"
     HTTP_HOST = "data.mtgox.com"
 
@@ -987,11 +987,11 @@ class SocketIOClient(BaseClient):
         self._try_send_raw("2::")
 
 
-class SocketIOBetaClient(SocketIOClient):
+class SocketIOOldClient(SocketIOClient):
     """experimental client for the beta websocket"""
     def __init__(self, currency, secret, config):
         SocketIOClient.__init__(self, currency, secret, config)
-        self.hostname = self.SOCKETIO_HOST_BETA
+        self.hostname = self.SOCKETIO_HOST_OLD
 
 
 # pylint: disable=R0902
@@ -1042,8 +1042,8 @@ class Gox(BaseObject):
         if use_websocket:
             self.client = WebsocketClient(self.currency, secret, config)
         else:
-            if FORCE_PROTOCOL == "socketio-beta":
-                self.client = SocketIOBetaClient(self.currency, secret, config)
+            if FORCE_PROTOCOL == "socketio-old":
+                self.client = SocketIOOldClient(self.currency, secret, config)
             else:
                 self.client = SocketIOClient(self.currency, secret, config)
 
