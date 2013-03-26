@@ -1,32 +1,27 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-us">
-<head>
-  <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
-  <title>goxtool.py</title>
-  <link rel="stylesheet" href="styles.css" type="text/css" />
-</head>
-<body>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en-us"><head>
+
+
+  <meta content="text/html; charset=UTF-8" http-equiv="content-type" /><title>goxtool.py</title>
+  
+  <link rel="stylesheet" href="styles.css" type="text/css" /></head><body>
 <h1>goxtool.py</h1>
 goxtool.py is a trading client for the MtGox Bitcoin currency exchange.
 It
 allows you to watch live market data, to send or cancel orders or to
 run a fully automated trading bot. It is designed to work in the Linux
 console (sorry, no Windows yet), its written in Python and is using the
-(n)curses library to draw its user interface (it does <span
- style="font-weight: bold;">not</span> have a GTK or Qt interface), all
+(n)curses library to draw its user interface (it does <span style="font-weight: bold;">not</span> have a GTK or Qt interface), all
 it needs to run is a terminal (either locally or remote through ssh or
 putty). <br />
 <br />
 This program is released under the GNU General Public License, Version
 3.<br />
-The github project page with source code and issue tracker is here: <a
- href="https://github.com/prof7bit/goxtool">https://github.com/prof7bit/goxtool</a><br />
+The github project page with source code and issue tracker is here: <a href="https://github.com/prof7bit/goxtool">https://github.com/prof7bit/goxtool</a><br />
 Donations are welcome: 1D7ELjGofBiRUJNwK55DVC3XWYjfN77CA3<br />
 <br />
 When goxtool is running it looks like this:<br />
-<img style="width: 1024px; height: 743px;"
- alt="goxtool.py screenshot of terminal running goxtool"
- src="screenshot1.png" /><br />
+<img style="width: 1024px; height: 743px;" alt="goxtool.py screenshot of terminal running goxtool" src="screenshot1.png" /><br />
 <span style="font-weight: bold;">
 </span>
 <h2>How to install
@@ -62,8 +57,7 @@ strategy module (see advanced
 usage)</li>
 </ul>
 There is also a&nbsp;<span class="codeword">goxtool.ini</span>
-file, it will be created on the first start. In the&nbsp;<span
- class="codeword">.ini</span> file
+file, it will be created on the first start. In the&nbsp;<span class="codeword">.ini</span> file
 there are some parameters you can change, for example the currency you
 want to trade BTC against or some parameters regarding the network
 protocol. Some of the&nbsp;<span class="codeword">.ini</span> settings
@@ -79,55 +73,41 @@ streaming socket, this affects only what happens when you
 buy/sell/cancel, it does not affect the streaming update of orderbook
 and chart.<br />
 <h3>socketio or websocket? Which one is worse?<br />
-</h3>
-After much experimentation it seems there are only two reasonable
-combinations of protocols. If everything at MtGox works then you should
-use websocket, this protocol is lightening fast compared to their
-socketio server (the reason is not the protocol itself, its their
-implementation at MtGox). The disadvantage of the websocket server is
-that it has a lot more downtimes, often for many hours and you have to
-wait until someone wakes up in Tokyo to reset it while the socketio
-server is working most of the time. Unfortunately socketio is
-incredibly slow and most of
-the time it is not reasonably possible to send trading commands,
-therefore here we must combine socketio with the
---use-http option.<br />
-<br />
-This means there are essentially only two reasonable combinations of
-protocols at the moment (unless they fix their servers). If everything
-is ok at MtGox then you start it with websocket, this should be your
-first choice, its the fastest protocol of all:<br />
+</h3>The two options are&nbsp;<span class="codeword">socketio</span> or&nbsp;<span class="codeword">websocket</span>.
+Websocket has been faster than socketio in the past (but they upgraded
+their servers recently). To start it with the websocket server do this:<br />
 <br />
 <pre>./goxtool.py --protocol=websocket</pre>
 <br />
 If it is weekend or night in Tokyo, MagicalTux is sleeping and the
-websocket server is down for many hours then start it with socketio:<br />
+websocket server is down for many hours (has happened in the past multiple times) then start it with socketio:<br />
 <br />
-<pre>./goxtool.py --protocol=socketio --use-http</pre>
+<pre>./goxtool.py --protocol=socketio</pre>
+<br />This is what I am currently using myself to find out if their new
+server infrastructure really has improved and at the moment it really
+looks like it has improved a *lot*. The default in the .ini file might
+eventually change to socketio if this really proves to be more reliable.<br />
 <br />
-The option&nbsp;<span class="codeword">--use-http</span> makes it send
+These options on the command line take precedence over what you have configured in the .ini file (but it won't change your .ini)<br />
+<br />
+If you experience a high lag between sending an order and the ack (the
+op:result not appearing immediately which has happened a lot during the
+times before the recent server upgrade) then it might help to
+additionally add the <span class="codeword">--use-http</span> option
+to the make it send
 all trading commands over http (buy, sell and cancel will still return
-instantly but the commands will be queued and a separate thread will
-execute them one after another in the background). You can of course
-also try to leave this last option away and send commands via socketio,
-this will work but it will lag like crazy, it will be no fun at all.
-Likewise you could also combine websocket and http if you want but this
-would not give you any advantage, their websocket server always accepts
-trading commands instantly, no reason to ever fall back to http.
-Essentially the two configurations above are the only two you will ever
-need. I hope eventually they will fix their servers and we can always
-use websocket and don't need the other protocols at all anymore.<br />
-<h3>socketio-beta</h3>
-There is now (since 2013-03-22) also a beta-version of the new socketio
-server, its hostname is&nbsp;<span class="codeword">socketio-beta.mtgox.com</span>
-it runs a slightly different version of the server software so I had to
-make some tweaks to my socketio implementation but now its possible to
-use this new server:<br />
-<pre>./goxtool.py --protocol=socketio-beta</pre>
-it seems at the moment (not many are using it yet) it is quite fast and
-does not (yet) need the --use-http flag. Lets hope this new server
-infrastructure will be more reliable under heavy load than the old one.
-Once it leaves its beta status it will replace socketio.<br />
+instantly but the http requests themselves will be queued and a
+separate thread will
+execute them one after another in the background). Http makes it
+slightly slower to execute many trades in a row but has been more
+reliable when the old server was under heavy load. <span class="codeword">--use-http</span> can be combined with either&nbsp;<span class="codeword">socketio</span> or&nbsp;<span class="codeword">websocket</span> or&nbsp;<span class="codeword">socketio-old</span>. Under normal conditions you don't need it and its not recommended as it slows things down considerably.<br />
+<h3>socketio-old</h3>On 2013-03-26 a server upgrade has happened,
+the&nbsp; old socketio server is still reachable with socketio-old, its
+hostname is <span class="codeword">socketio-old.mtgox.com</span> <br />
+<pre>./goxtool.py --protocol=socketio-old</pre>This will eventually
+disappear but it can be used as a fallback if the new server goes down,
+not many people are using the old server, so it might not be so much
+affected from huge traffic.<br />
 <h2>How to connect it to your MtGox account</h2>
 Do the following:<br />
 <pre>./goxtool.py --add-secret</pre>
@@ -181,19 +161,16 @@ Keyboard commands for trading:<br />
   <li><span class="keycmd">F6</span>&nbsp;: View orders / cancel
 order(s)</li>
 </ul>
-In the cancel dialog you can move up/down with the arrow keys, use&nbsp;<span
- class="keycmd">INS</span> to select/unselect orders (you can select
+In the cancel dialog you can move up/down with the arrow keys, use&nbsp;<span class="keycmd">INS</span> to select/unselect orders (you can select
 multiple orders and cancel them all at once) or if you just quickly
-want to cancel only one order just highlight to the order and hit&nbsp;<span
- class="keycmd">F8</span>. It behaves a little bit like deleting files
+want to cancel only one order just highlight to the order and hit&nbsp;<span class="keycmd">F8</span>. It behaves a little bit like deleting files
 in midnight commander.<br />
 <br />
 When entering a new order you can move between the fields with up/down
 keys or move to the next field with&nbsp;<span class="keycmd">tab</span>
 or&nbsp;<span class="keycmd">enter</span> (but only if you entered a
 valid number into the previous field, decimal separator is . (not
-comma, even on European computers), send the order with&nbsp;<span
- class="keycmd">enter</span>. <br />
+comma, even on European computers), send the order with&nbsp;<span class="keycmd">enter</span>. <br />
 <br />
 All dialogs can be closed with&nbsp;<span class="keycmd">F10</span>
 or&nbsp;<span class="keycmd">ESC</span>.<br />
@@ -205,8 +182,7 @@ empty skeleton). It has event methods (slots) connected to signals that
 will be fired when certain events occur. From within these methods you
 can then do arbitrary stuff (peek around in&nbsp;<span class="codeword">gox.orderbook</span>
 to see where bids
-and asks are located, call&nbsp;<span class="codeword">gox.buy()</span>,&nbsp;<span
- class="codeword">gox.sell()</span>&nbsp; or&nbsp;<span class="codeword">gox.cancel()</span>
+and asks are located, call&nbsp;<span class="codeword">gox.buy()</span>,&nbsp;<span class="codeword">gox.sell()</span>&nbsp; or&nbsp;<span class="codeword">gox.cancel()</span>
 methods to build a
 fully automated trading bot or you can use the key press slot (it will
 be called on all letter keys except&nbsp;<span class="keycmd">l</span>
@@ -217,10 +193,8 @@ of your bot or anything else you can imagine. Examples of simple bots
 will soon follow.<br />
 <br />
 If you decide to make serious use of this then please create a new
-python file for your strategy (make a copy of the default&nbsp;<span
- class="codeword">strategy.py</span>
-skeleton), give it a different name and leave&nbsp;<span
- class="codeword">strategy.py</span> alone so it
+python file for your strategy (make a copy of the default&nbsp;<span class="codeword">strategy.py</span>
+skeleton), give it a different name and leave&nbsp;<span class="codeword">strategy.py</span> alone so it
 won't collide with upstream changes you pull from github. By default
 goxtool will load&nbsp;<span class="codeword">strategy.py</span> but
 you can start it with the&nbsp;<span class="codeword">--strategy</span>
@@ -231,8 +205,7 @@ at runtime (this can be very useful),
 just press the&nbsp;<span class="keycmd">l</span> key (lowercase L) and
 it will do the following things:<br />
 <ul>
-  <li>emit signal _strategy_unload, this will call&nbsp;<span
- class="codeword">slot_before_unload()</span><br />
+  <li>emit signal _strategy_unload, this will call&nbsp;<span class="codeword">slot_before_unload()</span><br />
   </li>
   <li>free the currently running instance of&nbsp;<span class="codeword">Strategy()</span>
 (your&nbsp;<span class="codeword">__del__()</span>
@@ -242,15 +215,13 @@ method <span style="font-weight: bold;">should</span> be called)</li>
 and call your<span class="codeword">__init__()</span>
 again. </li>
 </ul>
-You should persist the state of your bot (if needed) in&nbsp;<span
- class="codeword">slot_before_unload()</span>
+You should persist the state of your bot (if needed) in&nbsp;<span class="codeword">slot_before_unload()</span>
 and reload it in&nbsp;<span class="codeword">__init__()</span>.
 Leave
 the&nbsp;<span class="codeword">__del__()</span> method alone, its only
 there to print a log mesage to debug proper unloading!<br />
 <br />
-Please make sure that you can see the debug output from the <span
- class="codeword">__del__()</span> method in the log when the strategy
+Please make sure that you can see the debug output from the <span class="codeword">__del__()</span> method in the log when the strategy
 is reloading, you must be sure its able to free and garbage collect
 your strategy! If you instantiate any circular references, even
 something as innocent as a double linked list or even just an object
@@ -270,10 +241,8 @@ Trading functions do NOT block, this means
 they also won't return the MtGox order ID, you need to find your own
 way of remembering which orders you have sent already. A few moments
 (seconds or minutes) after you have sent them they will be acked by
-MtGox and it will fire&nbsp;<span class="codeword">orderbook.signal_changed()</span><span
- style="font-family: monospace;">
-</span>and when this happens you will find it in the&nbsp;<span
- class="codeword">gox.orderbook.owns</span> list and it
+MtGox and it will fire&nbsp;<span class="codeword">orderbook.signal_changed()</span><span style="font-family: monospace;">
+</span>and when this happens you will find it in the&nbsp;<span class="codeword">gox.orderbook.owns</span> list and it
 will have an official order ID. I know this is not optimal (because
 this part of the code is not yet complete, eventually there will be
 dedicated signals to notify your bot about the results of trading
@@ -296,5 +265,4 @@ development but this is outside the scope of this document, there exist
 specialized howtos for git and github elsewhere.<br />
 <br />
 (TODO: finish writing this howto)
-</body>
-</html>
+</body></html>
