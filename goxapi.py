@@ -609,13 +609,6 @@ class BaseClient(BaseObject):
             self._last_nonce = nonce
             return nonce
 
-    def request_order_lag(self):
-        """request the current order-lag"""
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
-            self.enqueue_http_request("money/order/lag", {}, "order_lag")
-        else:
-            self.send_signed_call("order/lag", {}, "order_lag")
-
     def request_fulldepth(self):
         """start the fulldepth thread"""
 
@@ -660,6 +653,7 @@ class BaseClient(BaseObject):
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
+        self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
         if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
             self.enqueue_http_request("money/orders", {}, "orders")
@@ -793,12 +787,11 @@ class BaseClient(BaseObject):
             self.send_signed_call(api, params, reqid)
 
     def slot_timer(self, _sender, _data):
-        """request order/lag in regular intervals"""
+        """check timeout (last received, dead socket?)"""
         if time.time() - self._time_last_received > 60:
             self.debug("did not receive anything for a long time, disconnecting.")
             self.socket.close()
             self.connected = False
-        self.request_order_lag()
 
 
 class WebsocketClient(BaseClient):
@@ -1197,6 +1190,7 @@ class Gox(BaseObject):
             handler = getattr(self, "_on_op_private_" + private)
         except AttributeError:
             self.debug("_on_op_private() ignoring: private=%s" % private)
+            self.debug(pretty_format(msg))
 
         if handler:
             handler(msg)
@@ -1272,6 +1266,15 @@ class Gox(BaseObject):
         total = int(balance["value_int"])
         self.wallet[currency] = total
         self.signal_wallet(self, ())
+
+    def _on_op_private_lag(self, msg):
+        """handle the lag message"""
+        self.order_lag = int(msg["lag"]["age"])
+        if self.order_lag < 60000000:
+            text = "%0.3f s" % (int(self.order_lag / 1000) / 1000.0)
+        else:
+            text = "%d s" % (int(self.order_lag / 1000000))
+        self.signal_orderlag(self, (self.order_lag, text))
 
     def _on_op_remark(self, msg):
         """handler for op=remark messages"""

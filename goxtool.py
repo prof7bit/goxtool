@@ -499,7 +499,7 @@ class WinStatus(Win):
         line2 = "total bid: " + str_fiat + " " + self.gox.currency + " | "
         line2 += "total ask: " +str_btc + " BTC | "
         line2 += "ratio: " + str_ratio + " " + self.gox.currency + "/BTC | "
-        line2 += "order lag: " + self.order_lag_txt
+        line2 += "lag: " + self.order_lag_txt
         self.addstr(0, 0, line1, COLOR_PAIR["status_text"])
         self.addstr(1, 0, line2, COLOR_PAIR["status_text"])
 
