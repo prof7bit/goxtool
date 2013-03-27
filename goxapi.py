@@ -650,9 +650,6 @@ class BaseClient(BaseObject):
         """subscribe to the needed channels and alo initiate the
         download of the initial full market depth"""
 
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
         if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
