@@ -1375,16 +1375,19 @@ class OrderBook(BaseObject):
         self.ask = ask
         self._repair_crossed_asks(ask)
         self._repair_crossed_bids(bid)
-        self.signal_changed(self, ())
+        self.signal_changed(self, None)
 
     def slot_depth(self, dummy_sender, data):
         """Slot for signal_depth, process incoming depth message"""
         (typ, price, _voldiff, total_vol) = data
+        toa, tob = self.total_ask, self.total_bid
         if typ == "ask":
             self._update_asks(price, total_vol)
         if typ == "bid":
             self._update_bids(price, total_vol)
-        self.signal_changed(self, ())
+
+        if (toa, tob) != (self.total_ask, self.total_bid):
+            self.signal_changed(self, None)
 
     def slot_trade(self, dummy_sender, data):
         """Slot for signal_trade event, process incoming trade messages.
@@ -1424,7 +1427,7 @@ class OrderBook(BaseObject):
                 if len(self.bids):
                     self.bid = self.bids[0].price
 
-        self.signal_changed(self, ())
+        self.signal_changed(self, None)
 
     def slot_user_order(self, dummy_sender, data):
         """Slot for signal_userorder, process incoming user_order mesage"""
@@ -1459,7 +1462,7 @@ class OrderBook(BaseObject):
                     "status:", status)
                 self.owns.append(Order(price, volume, typ, oid, status))
 
-        self.signal_changed(self, ())
+        self.signal_changed(self, None)
 
     def slot_fulldepth(self, dummy_sender, data):
         """Slot for signal_fulldepth, process received fulldepth data.
@@ -1486,7 +1489,7 @@ class OrderBook(BaseObject):
 
         self.bid = self.bids[0].price
         self.ask = self.asks[0].price
-        self.signal_changed(self, ())
+        self.signal_changed(self, None)
 
     def _repair_crossed_bids(self, bid):
         """remove all bids that are higher that official current bid value,
@@ -1587,7 +1590,7 @@ class OrderBook(BaseObject):
     def reset_own(self):
         """clear all own orders"""
         self.owns = []
-        self.signal_changed(self, ())
+        self.signal_changed(self, None)
 
     def add_own(self, order):
         """add order to the list of own orders. This method is used
