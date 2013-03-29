@@ -816,6 +816,7 @@ class WebsocketClient(BaseClient):
 
                 self.socket = websocket.WebSocket()
                 self.socket.connect(ws_url)
+                self._time_last_received = time.time()
                 self.connected = True
                 self.debug("connected, subscribing needed channels")
                 self.channel_subscribe()
@@ -932,6 +933,7 @@ class SocketIOClient(BaseClient):
                 self.socket.connect(wsp + self.hostname + "/socket.io/1",
                     query="Currency=" + self.currency)
 
+                self._time_last_received = time.time()
                 self.connected = True
                 self.debug("connected")
                 self.socket.send("1::/mtgox")
