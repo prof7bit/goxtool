@@ -785,10 +785,11 @@ class BaseClient(BaseObject):
 
     def slot_timer(self, _sender, _data):
         """check timeout (last received, dead socket?)"""
-        if time.time() - self._time_last_received > 60:
-            self.debug("did not receive anything for a long time, disconnecting.")
-            self.socket.close()
-            self.connected = False
+        if self.connected:
+            if time.time() - self._time_last_received > 60:
+                self.debug("did not receive anything for a long time, disconnecting.")
+                self.socket.close()
+                self.connected = False
 
 
 class WebsocketClient(BaseClient):
