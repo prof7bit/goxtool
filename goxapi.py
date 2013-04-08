@@ -763,13 +763,16 @@ class BaseClient(BaseObject):
     def send_order_add(self, typ, price, volume):
         """send an order"""
         reqid = "order_add:%s:%d:%d" % (typ, price, volume)
+        if price > 0:
+            params = {"type": typ, "price_int": price, "amount_int": volume}
+        else:
+            params = {"type": typ, "amount_int": volume}
+
         if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
             api = "BTC%s/money/order/add" % self.currency
-            params = {"type": typ, "price_int": price, "amount_int": volume}
             self.enqueue_http_request(api, params, reqid)
         else:
             api = "order/add"
-            params = {"type": typ, "price_int": price, "amount_int": volume}
             self.send_signed_call(api, params, reqid)
 
     def send_order_cancel(self, oid):
@@ -821,7 +824,6 @@ class WebsocketClient(BaseClient):
                 self.debug("connected, subscribing needed channels")
                 self.channel_subscribe()
 
-                reconnect_time = 5
                 self.debug("waiting for data...")
                 while not self._terminating: #loop1 (read messages)
                     str_json = self.socket.recv()
@@ -829,16 +831,14 @@ class WebsocketClient(BaseClient):
                     if str_json[0] == "{":
                         self.signal_recv(self, (str_json))
 
-
             except Exception as exc:
                 self.connected = False
                 if not self._terminating:
-                    self.debug(exc, "reconnecting in %i seconds..." % reconnect_time)
+                    self.debug(exc.__class__.__name__, exc,
+                        "reconnecting in %i seconds..." % reconnect_time)
                     if self.socket:
                         self.socket.close()
                     time.sleep(reconnect_time)
-                    reconnect_time = int(reconnect_time * 1.2)
-
 
     def send(self, json_str):
         """send the json encoded string over the websocket"""
