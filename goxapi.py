@@ -507,23 +507,35 @@ class History(BaseObject):
     def slot_fullhistory(self, dummy_sender, data):
         """process the result of the fullhistory request"""
         (history) = data
-        self.candles = []
-        new_candle = OHLCV(0, 0, 0, 0, 0, 0)
+
+        def get_time_round(date):
+            """round timestamp to current candle timeframe"""
+            return int(date / self.timeframe) * self.timeframe
+
+        #remove existing recent candle(s) if any, we will create them fresh
+        date_begin = get_time_round(int(history[0]["date"]))
+        while len(self.candles) and self.candles[0].tim >= date_begin:
+            self.candles.pop(0)
+
+        new_candle = OHLCV(0, 0, 0, 0, 0, 0) #this is a dummy, not actually inserted
+        count_added = 0
         for trade in history:
             date = int(trade["date"])
             price = int(trade["price_int"])
             volume = int(trade["amount_int"])
-            time_round = int(date / self.timeframe) * self.timeframe
+            time_round = get_time_round(date)
             if time_round > new_candle.tim:
                 if new_candle.tim > 0:
                     self._add_candle(new_candle)
+                    count_added += 1
                 new_candle = OHLCV(
                     time_round, price, price, price, price, volume)
             new_candle.update(price, volume)
 
         # insert current (incomplete) candle
         self._add_candle(new_candle)
-        self.debug("### got %d candles" % self.length())
+        count_added += 1
+        self.debug("### got %d updated candle(s)" % count_added)
         self.signal_changed(self, (self.length()))
 
     def last_candle(self):
@@ -570,6 +582,7 @@ class BaseClient(BaseObject):
         self._terminating = False
         self.connected = False
         self._time_last_received = 0
+        self.history_last_candle = None
 
     def start(self):
         """start the client"""
@@ -618,7 +631,8 @@ class BaseClient(BaseObject):
             the streaming API has been connected."""
             self.debug("requesting initial full depth")
             fulldepth = http_request("https://" +  self.HTTP_HOST \
-                + "/api/2/BTC" + self.currency + "/money/depth/full")
+                + "/api/2/BTC" + self.currency + "/money/depth/full?"
+                + str(time.time()))
             self.signal_fulldepth(self, (json.loads(fulldepth)))
 
         start_thread(fulldepth_thread)
@@ -626,15 +640,26 @@ class BaseClient(BaseObject):
     def request_history(self):
         """request trading history"""
 
+        # Gox() will have set this field to the timestamp of the last
+        # known candle, so we only request data since this time
+        since = self.history_last_candle
+
         def history_thread():
             """request trading history"""
 
             # 1308503626, 218868 <-- last small transacion ID
             # 1309108565, 1309108565842636 <-- first big transaction ID
 
+            if since:
+                querystring = "?since=" + str(since * 1000000)
+                querystring += "&nocache=" + str(time.time())
+            else:
+                querystring = "?nocache=" + str(time.time())
+
             self.debug("requesting history")
             json_hist = http_request("https://" +  self.HTTP_HOST \
-                + "/api/2/BTC" + self.currency + "/money/trades")
+                + "/api/2/BTC" + self.currency + "/money/trades"
+                + querystring)
             history = json.loads(json_hist)
             if history["result"] == "success":
                 self.signal_fullhistory(self, history["data"])
@@ -650,6 +675,9 @@ class BaseClient(BaseObject):
         """subscribe to the needed channels and alo initiate the
         download of the initial full market depth"""
 
+        self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
+        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trade"}))
+        self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
         if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
@@ -806,7 +834,7 @@ class WebsocketClient(BaseClient):
         """connect to the webocket and tart receiving inan infinite loop.
         Try to reconnect whenever connection is lost. Each received json
         string will be dispatched with a signal_recv signal"""
-        reconnect_time = 5
+        reconnect_time = 1
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         while not self._terminating:  #loop 0 (connect, reconnect)
@@ -814,7 +842,6 @@ class WebsocketClient(BaseClient):
                 ws_url = wsp + self.WEBSOCKET_HOST \
                     + "/mtgox?Currency=" + self.currency
 
-                self.debug("*** Hint: connection problems? try: use_plain_old_websocket=False")
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
                 self.socket = websocket.WebSocket()
@@ -926,7 +953,6 @@ class SocketIOClient(BaseClient):
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         while not self._terminating: #loop 0 (connect, reconnect)
             try:
-                self.debug("*** Hint: connection problems? try: use_plain_old_websocket=True")
                 self.debug("trying Socket.IO: %s ..." % self.hostname)
 
                 self.socket = SocketIO()
@@ -976,8 +1002,9 @@ class SocketIOClient(BaseClient):
 
     def slot_keepalive_timer(self, _sender, _data):
         """send a keepalive, just to make sure our socket is not dead"""
-        self.debug("sending keepalive")
-        self._try_send_raw("2::")
+        if self.connected:
+            self.debug("sending keepalive")
+            self._try_send_raw("2::")
 
 
 class SocketIOOldClient(SocketIOClient):
@@ -1015,6 +1042,7 @@ class Gox(BaseObject):
         self._idkey      = ""
         self.wallet = {}
         self.order_lag = 0
+        self.last_tid = 0
 
         self.config = config
         self.currency = config.get("gox", "currency", "USD")
@@ -1044,6 +1072,11 @@ class Gox(BaseObject):
         self.client.signal_recv.connect(self.slot_recv)
         self.client.signal_fulldepth.connect(self.signal_fulldepth)
         self.client.signal_fullhistory.connect(self.signal_fullhistory)
+
+        self.timer_poll = Timer(120)
+        self.timer_poll.connect(self.slot_poll)
+
+        self.history.signal_changed.connect(self.slot_history_changed)
 
     def start(self):
         """connect to MtGox and start receiving events."""
@@ -1106,6 +1139,20 @@ class Gox(BaseObject):
 
         if handler:
             handler(msg)
+
+    def slot_poll(self, _sender, _data):
+        """poll stuff from http in regular intervals, not yet implemented"""
+        if self.client.secret and self.client.secret.know_secret():
+            # poll recent own trades
+            # fixme: how do i do this, whats the api for this?
+            pass
+
+    def slot_history_changed(self, _sender, _data):
+        """this is a small optimzation, if we tell the client the time
+        of the last known candle then it won't fetch full history next time"""
+        last_candle = self.history.last_candle()
+        if last_candle:
+            self.client.history_last_candle = last_candle.tim
 
     def _on_op_error(self, msg):
         """handle error mesages (op:error)"""
