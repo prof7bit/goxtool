@@ -631,8 +631,7 @@ class BaseClient(BaseObject):
             the streaming API has been connected."""
             self.debug("requesting initial full depth")
             fulldepth = http_request("https://" +  self.HTTP_HOST \
-                + "/api/2/BTC" + self.currency + "/money/depth/full?"
-                + str(time.time()))
+                + "/api/2/BTC" + self.currency + "/money/depth/full")
             self.signal_fulldepth(self, (json.loads(fulldepth)))
 
         start_thread(fulldepth_thread)
@@ -652,9 +651,8 @@ class BaseClient(BaseObject):
 
             if since:
                 querystring = "?since=" + str(since * 1000000)
-                querystring += "&nocache=" + str(time.time())
             else:
-                querystring = "?nocache=" + str(time.time())
+                querystring = ""
 
             self.debug("requesting history")
             json_hist = http_request("https://" +  self.HTTP_HOST \
@@ -676,7 +674,7 @@ class BaseClient(BaseObject):
         download of the initial full market depth"""
 
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trade"}))
+        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
