@@ -131,6 +131,7 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "use_http_api", "False"]
                 ,["gox", "load_fulldepth", "True"]
                 ,["gox", "load_history", "True"]
+                ,["gox", "history_timeframe", "15"]
                 ,["gox", "secret_key", ""]
                 ,["gox", "secret_secret", ""]
                 ,["goxtool", "set_xterm_title", "True"]
@@ -172,6 +173,14 @@ class GoxConfig(SafeConfigParser):
     def get_string(self, sect, opt):
         """get string value from config"""
         return self.get_safe(sect, opt)
+
+    def get_int(self, sect, opt):
+        """get int value from config"""
+        vstr = self.get_safe(sect, opt)
+        try:
+            return int(vstr)
+        except ValueError:
+            return 0
 
     def _default(self, section, option, default):
         """create a default option if it does not yet exist"""
@@ -1040,7 +1049,10 @@ class Gox(BaseObject):
 
         Signal.signal_error.connect(self.signal_debug)
 
-        self.history = History(self, 60 * 15)
+        timeframe = 60 * config.get_int("gox", "history_timeframe")
+        if not timeframe:
+            timeframe = 60 * 15
+        self.history = History(self, timeframe)
         self.history.signal_debug.connect(self.signal_debug)
 
         self.orderbook = OrderBook(self)
