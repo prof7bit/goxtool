@@ -721,8 +721,9 @@ class TextBox():
         position. This is only a cosmetic problem but very annnoying. Try to
         force it into the edit field by repainting it very often."""
         while self.editing:
-            self.win.touchwin()
-            self.win.refresh()
+            with goxapi.Signal._lock:
+                self.win.touchwin()
+                self.win.refresh()
             time.sleep(0.1)
 
 
@@ -969,12 +970,13 @@ def main():
                 if key == curses.KEY_F6:
                     DlgCancelOrders(stdscr, gox).modal()
                 if key == curses.KEY_RESIZE:
-                    stdscr.erase()
-                    stdscr.refresh()
-                    conwin.resize()
-                    bookwin.resize()
-                    chartwin.resize()
-                    statuswin.resize()
+                    with goxapi.Signal._lock:
+                        stdscr.erase()
+                        stdscr.refresh()
+                        conwin.resize()
+                        bookwin.resize()
+                        chartwin.resize()
+                        statuswin.resize()
                     continue
                 if key == ord("l"):
                     strategy_manager.reload()
