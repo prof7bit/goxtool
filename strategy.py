@@ -16,6 +16,8 @@ class Strategy(goxapi.BaseObject):
         gox.signal_depth.connect(self.slot_depth)
         gox.signal_trade.connect(self.slot_trade)
         gox.signal_userorder.connect(self.slot_userorder)
+        gox.orderbook.signal_owns_changed.connect(self.slot_owns_changed)
+        gox.signal_wallet.connect(self.slot_wallet_changed)
         self.gox = gox
         self.name = "%s.%s" % (__name__, self.__class__.__name__)
         self.debug("%s loaded" % self.name)
@@ -36,9 +38,20 @@ class Strategy(goxapi.BaseObject):
         pass
 
     def slot_trade(self, gox, (date, price, volume, typ, own)):
+        """a trade message has been received. Note that this might come
+        before the orderbook.owns list has been updated, don't rely on the
+        own orders and wallet already having been updated when this fires."""
         pass
 
     def slot_userorder(self, gox, (price, volume, typ, oid, status)):
+        """this comes directly from the API and owns list might not yet be
+        updated, if you need the new owns list then use slot_owns_changed"""
         pass
 
+    def slot_owns_changed(self, orderbook, _dummy):
+        """this comes *after* userorder and orderbook.owns is updated already"""
+        pass
 
+    def slot_wallet_changed(self, gox, _dummy):
+        """this comes after the wallet has been updated"""
+        pass

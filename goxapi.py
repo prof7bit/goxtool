@@ -1041,6 +1041,7 @@ class Gox(BaseObject):
         self.wallet = {}
         self.order_lag = 0
         self.last_tid = 0
+        self.count_submitted = 0  # number of submitted orders not yet acked
 
         self.config = config
         self.currency = config.get("gox", "currency", "USD")
@@ -1088,6 +1089,7 @@ class Gox(BaseObject):
 
     def order(self, typ, price, volume):
         """place pending order. If price=0 then it will be filled at market"""
+        self.count_submitted += 1
         self.client.send_order_add(typ, price, volume)
 
     def buy(self, price, volume):
@@ -1172,16 +1174,8 @@ class Gox(BaseObject):
 
         elif reqid == "orders":
             self.debug("### got own order list")
-            self.orderbook.reset_own()
-            for order in result:
-                if order["currency"] == self.currency:
-                    self.orderbook.add_own(Order(
-                        int(order["price"]["value_int"]),
-                        int(order["amount"]["value_int"]),
-                        order["type"],
-                        order["oid"],
-                        order["status"]
-                    ))
+            self.count_submitted = 0
+            self.orderbook.init_own(result)
             self.debug("### have %d own orders for BTC/%s" %
                 (len(self.orderbook.owns), self.currency))
 
@@ -1213,6 +1207,7 @@ class Gox(BaseObject):
             oid = result
             self.debug("### got ack for order/add:", typ, price, volume, oid)
             self.orderbook.add_own(Order(price, volume, typ, oid, "pending"))
+            self.count_submitted -= 1
 
         elif "order_cancel:" in reqid:
             # cancel request has been acked but we won't remove it from our
@@ -1310,7 +1305,7 @@ class Gox(BaseObject):
         currency = balance["currency"]
         total = int(balance["value_int"])
         self.wallet[currency] = total
-        self.signal_wallet(self, ())
+        self.signal_wallet(self, None)
 
     def _on_op_private_lag(self, msg):
         """handle the lag message"""
@@ -1397,6 +1392,7 @@ class OrderBook(BaseObject):
         self.gox = gox
 
         self.signal_changed = Signal()
+        self.signal_owns_changed = Signal()
 
         gox.signal_ticker.connect(self.slot_ticker)
         gox.signal_depth.connect(self.slot_depth)
@@ -1508,6 +1504,7 @@ class OrderBook(BaseObject):
                 self.owns.append(Order(price, volume, typ, oid, status))
 
         self.signal_changed(self, None)
+        self.signal_owns_changed(self, None)
 
     def slot_fulldepth(self, dummy_sender, data):
         """Slot for signal_fulldepth, process received fulldepth data.
@@ -1632,16 +1629,39 @@ class OrderBook(BaseObject):
                 return True
         return False
 
-    def reset_own(self):
-        """clear all own orders"""
+    def init_own(self, own_orders):
+        """called by gox when the initial order list is downloaded,
+        this will happen after connect or reconnect"""
         self.owns = []
+        for order in own_orders:
+            if order["currency"] == self.gox.currency:
+                self._add_own(Order(
+                    int(order["price"]["value_int"]),
+                    int(order["amount"]["value_int"]),
+                    order["type"],
+                    order["oid"],
+                    order["status"]
+                ))
+
         self.signal_changed(self, None)
+        self.signal_owns_changed(self, None)
 
     def add_own(self, order):
+        """called by gox when a new order has been acked
+        after it has been submitted. This is a separate method because
+        we need to fire the *_changed signals when this happens"""
+        self._add_own(order)
+        self.signal_changed(self, None)
+        self.signal_owns_changed(self, None)
+
+    def _add_own(self, order):
         """add order to the list of own orders. This method is used
-        by the Gox object only during initial download of complete
-        order list, all subsequent updates will then be done through
-        the event methods slot_user_order and slot_trade"""
+        only during initial download of complete order list. This will also
+        add dummy levels in the bids and asks list to make them visible in the
+        UI even if they are not yet officially "open" on the server and
+        therefore not yet in the official orderbook. All subsequent updates
+        of the owns list will be done through the event method slot_user_order
+        """
 
         def insert_dummy(lst, is_ask):
             """insert an empty (volume=0) dummy order into the bids or asks
@@ -1672,5 +1692,3 @@ class OrderBook(BaseObject):
                 insert_dummy(self.asks, True)
             if order.typ == "bid":
                 insert_dummy(self.bids, False)
-
-            self.signal_changed(self, ())
