@@ -127,7 +127,7 @@ class GoxConfig(SafeConfigParser):
 
     _DEFAULTS = [["gox", "currency", "USD"]
                 ,["gox", "use_ssl", "True"]
-                ,["gox", "use_plain_old_websocket", "True"]
+                ,["gox", "use_plain_old_websocket", "False"]
                 ,["gox", "use_http_api", "False"]
                 ,["gox", "load_fulldepth", "True"]
                 ,["gox", "load_history", "True"]
