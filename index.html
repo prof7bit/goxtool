@@ -2,6 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en-us"><head>
 
 
+
   <meta content="text/html; charset=UTF-8" http-equiv="content-type" /><title>goxtool.py</title>
   
   <link rel="stylesheet" href="styles.css" type="text/css" /></head><body>
@@ -100,15 +101,7 @@ instantly but the http requests themselves will be queued and a
 separate thread will
 execute them one after another in the background). Http makes it
 slightly slower to execute many trades in a row but has been more
-reliable when the old server was under heavy load. <span class="codeword">--use-http</span> can be combined with either&nbsp;<span class="codeword">socketio</span> or&nbsp;<span class="codeword">websocket</span> or&nbsp;<span class="codeword">socketio-old</span>. Under normal conditions you don't need it and its not recommended as it slows things down considerably.<br />
-<h3>socketio-old</h3>On 2013-03-26 a server upgrade has happened,
-the&nbsp; old socketio server is still reachable with socketio-old, its
-hostname is <span class="codeword">socketio-old.mtgox.com</span> <br />
-<pre>./goxtool.py --protocol=socketio-old</pre>This will eventually
-disappear but it can be used as a fallback if the new server goes down,
-not many people are using the old server, so it might not be so much
-affected from huge traffic.<br />
-<h2>How to connect it to your MtGox account</h2>
+reliable when the old server was under heavy load. If you don't need to send many orders very fast then this option won't hurt. <span class="codeword">--use-http</span> can be combined with either&nbsp;<span class="codeword">socketio</span> or&nbsp;<span class="codeword">websocket</span><span class="codeword" />. <h2>How to connect it to your MtGox account</h2>
 Do the following:<br />
 <pre>./goxtool.py --add-secret</pre>
 This will now ask you for key, secret and
