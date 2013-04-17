@@ -681,18 +681,18 @@ class BaseClient(BaseObject):
         """subscribe to the needed channels and alo initiate the
         download of the initial full market depth"""
 
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
+        #self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
+        #self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
+        #self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
         if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
-            self.enqueue_http_request("money/orders", {}, "orders")
             self.enqueue_http_request("money/idkey", {}, "idkey")
+            self.enqueue_http_request("money/orders", {}, "orders")
             self.enqueue_http_request("money/info", {}, "info")
         else:
-            self.send_signed_call("private/orders", {}, "orders")
             self.send_signed_call("private/idkey", {}, "idkey")
+            self.send_signed_call("private/orders", {}, "orders")
             self.send_signed_call("private/info", {}, "info")
 
         if self.config.get_bool("gox", "load_fulldepth"):
@@ -994,10 +994,9 @@ class SocketIOClient(BaseClient):
                 self.connected = False
                 if not self._terminating:
                     self.debug(exc.__class__.__name__, exc, \
-                        "reconnecting in 5 seconds...")
-                    if self.socket:
-                        self.socket.close()
-                    time.sleep(5)
+                        "reconnecting in 1 seconds...")
+                    self.socket.close()
+                    time.sleep(1)
 
     def send(self, json_str):
         """send a string to the websocket. This method will prepend it
