@@ -1452,7 +1452,7 @@ class OrderBook(BaseObject):
                         if self.asks[0].volume <= 0:
                             voldiff -= self.asks[0].volume
                             self.asks.pop(0)
-                            self._update_total_ask(voldiff)
+                        self._update_total_ask(voldiff)
                 if len(self.asks):
                     self.ask = self.asks[0].price
 
@@ -1464,7 +1464,7 @@ class OrderBook(BaseObject):
                         if self.bids[0].volume <= 0:
                             voldiff -= self.bids[0].volume
                             self.bids.pop(0)
-                            self._update_total_bid(voldiff, price)
+                        self._update_total_bid(voldiff, price)
                 if len(self.bids):
                     self.bid = self.bids[0].price
 
