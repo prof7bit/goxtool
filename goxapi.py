@@ -711,7 +711,7 @@ class BaseClient(BaseObject):
             try:
                 answer = self.http_signed_call(api_endpoint, params)
                 if answer["result"] == "success":
-                    # the fiollowing will reformat the answer in such a way
+                    # the following will reformat the answer in such a way
                     # that we can pass it directly to signal_recv()
                     # as if it had come directly from the websocket
                     ret = {"op": "result", "id": reqid, "result": answer["data"]}
@@ -837,7 +837,7 @@ class WebsocketClient(BaseClient):
         BaseClient.__init__(self, currency, secret, config)
 
     def _recv_thread_func(self):
-        """connect to the webocket and tart receiving inan infinite loop.
+        """connect to the websocket and start receiving in an infinite loop.
         Try to reconnect whenever connection is lost. Each received json
         string will be dispatched with a signal_recv signal"""
         reconnect_time = 1
@@ -1330,7 +1330,7 @@ class Gox(BaseObject):
     def _on_invalid_call(self, msg):
         """this comes as an op=remark message and is a strange mystery"""
         # Workaround: Maybe a bug in their server software,
-        # I don't know whats missing. Its all poorly documented :-(
+        # I don't know what's missing. Its all poorly documented :-(
         # Sometimes some API calls fail the first time for no reason,
         # if this happens just send them again. This happens only
         # somtimes (10%) and sending them again will eventually succeed.
