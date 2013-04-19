@@ -676,6 +676,7 @@ class TextBox():
     def __init__(self, dlg, posy, posx, length):
         self.dlg = dlg
         self.win = dlg.win.derwin(1, length, posy, posx)
+        self.win.keypad(1)
         self.box = curses.textpad.Textbox(self.win, insert_mode=True)
         self.value = ""
         self.result = None

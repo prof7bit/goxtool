@@ -638,7 +638,9 @@ class BaseClient(BaseObject):
             and then terminate. This is called in a separate thread after
             the streaming API has been connected."""
             self.debug("requesting initial full depth")
-            fulldepth = http_request("https://" +  self.HTTP_HOST \
+            use_ssl = self.config.get_bool("gox", "use_ssl")
+            proto = {True: "https", False: "http"}[use_ssl]
+            fulldepth = http_request(proto + "://" +  self.HTTP_HOST \
                 + "/api/2/BTC" + self.currency + "/money/depth/full")
             self.signal_fulldepth(self, (json.loads(fulldepth)))
 
@@ -663,7 +665,9 @@ class BaseClient(BaseObject):
                 querystring = ""
 
             self.debug("requesting history")
-            json_hist = http_request("https://" +  self.HTTP_HOST \
+            use_ssl = self.config.get_bool("gox", "use_ssl")
+            proto = {True: "https", False: "http"}[use_ssl]
+            json_hist = http_request(proto + "://" +  self.HTTP_HOST \
                 + "/api/2/BTC" + self.currency + "/money/trades"
                 + querystring)
             history = json.loads(json_hist)
@@ -722,6 +726,8 @@ class BaseClient(BaseObject):
 
             except Exception as exc:
                 self.debug("### error:", exc, api_endpoint, params, reqid)
+                if "500" in str(exc):
+                    continue
                 self.enqueue_http_request(api_endpoint, params, reqid)
 
             self.http_requests.task_done()
@@ -753,8 +759,11 @@ class BaseClient(BaseObject):
             'Rest-Sign': base64.b64encode(sign)
         }
 
-        url = "https://" + self.HTTP_HOST + "/api/2/" + api_endpoint
-        self.debug("### (http) calling %s" % url)
+        use_ssl = self.config.get_bool("gox", "use_ssl")
+        proto = {True: "https", False: "http"}[use_ssl]
+        url = proto + "://" + self.HTTP_HOST + "/api/2/" + api_endpoint
+
+        self.debug("### (%s) calling %s" % (proto, url))
         req = URLRequest(url, post, headers)
         with contextlib.closing(urlopen(req, post)) as res:
             return json.load(res)
