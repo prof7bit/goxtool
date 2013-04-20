@@ -19,7 +19,8 @@ class Strategy(goxapi.BaseObject):
         gox.orderbook.signal_owns_changed.connect(self.slot_owns_changed)
         gox.signal_wallet.connect(self.slot_wallet_changed)
         self.gox = gox
-        self.name = "%s.%s" % (__name__, self.__class__.__name__)
+        self.name = "%s.%s" % \
+            (self.__class__.__module__, self.__class__.__name__)
         self.debug("%s loaded" % self.name)
 
     def __del__(self):
