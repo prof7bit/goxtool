@@ -870,7 +870,8 @@ class LogWriter():
     # pylint: disable=R0201
     def slot_debug(self, sender, (msg)):
         """handler for signal_debug signals"""
-        logging.debug("%s:%s", sender.__class__.__name__, msg)
+        name = "%s.%s" % (sender.__class__.__module__, sender.__class__.__name__)
+        logging.debug("%s:%s", name, msg)
 
 
 class PrintHook():
