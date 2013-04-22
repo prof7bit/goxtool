@@ -45,7 +45,7 @@ import time
 import traceback
 import threading
 from urllib2 import Request as URLRequest
-from urllib2 import urlopen
+from urllib2 import urlopen, HTTPError
 from urllib import urlencode
 import weakref
 import websocket
@@ -84,18 +84,31 @@ def float2int(value_float, currency):
     else:
         return int(value_float * 100000)
 
-def http_request(url):
+def http_request(url, post=None, headers=None):
     """request data from the HTTP API, returns a string"""
-    request = URLRequest(url)
-    request.add_header('Accept-encoding', 'gzip')
-    data = ""
-    with contextlib.closing(urlopen(request)) as response:
+
+    def read_gzipped(response):
+        """read data from the response object,
+        unzip if necessary, return text string"""
         if response.info().get('Content-Encoding') == 'gzip':
             with io.BytesIO(response.read()) as buf:
                 with gzip.GzipFile(fileobj=buf) as unzipped:
                     data = unzipped.read()
         else:
             data = response.read()
+        return data
+
+    if not headers:
+        headers = {}
+    request = URLRequest(url, post, headers)
+    request.add_header('Accept-encoding', 'gzip')
+    data = ""
+    try:
+        with contextlib.closing(urlopen(request, post)) as res:
+            data = read_gzipped(res)
+    except HTTPError as err:
+        data = read_gzipped(err)
+
     return data
 
 def start_thread(thread_func):
@@ -721,14 +734,33 @@ class BaseClient(BaseObject):
                     ret = {"op": "result", "id": reqid, "result": answer["data"]}
                     self.signal_recv(self, (json.dumps(ret)))
                 else:
-                    self.debug("### error:", answer, reqid)
-                    #self.enqueue_http_request((api_endpoint, params, reqid))
+                    self.debug("### http error result:", answer, reqid)
+                    retry = True
+
+                    if "error" in answer and answer["error"] == "Order not found":
+                        self.debug("### could not cancel non existing order")
+                        # the owns list is out of sync. Translate it into an
+                        # op:remark message and send it to the recv signal as if
+                        # this had come from the streming API, that will make
+                        # it properly handle this condition and remove it.
+                        fake_remark_msg = {
+                            "op": "remark",
+                            "success": False,
+                            "message": "Order not found",
+                            "id": reqid
+                        }
+                        self.signal_recv(self, (json.dumps(fake_remark_msg)))
+                        retry = False
+
+                    if retry:
+                        self.enqueue_http_request(api_endpoint, params, reqid)
 
             except Exception as exc:
-                self.debug("### error:", exc, api_endpoint, params, reqid)
-                if "500" in str(exc):
-                    continue
-                self.enqueue_http_request(api_endpoint, params, reqid)
+                # should this ever happen? HTTP 5xx wont trigger this,
+                # something else must have gone wrong, a totally malformed
+                # reply or something else. Log the error and don't retry
+                self.debug("### exception in _http_thread_func:",
+                    exc, api_endpoint, params, reqid)
 
             self.http_requests.task_done()
 
@@ -764,9 +796,11 @@ class BaseClient(BaseObject):
         url = proto + "://" + self.HTTP_HOST + "/api/2/" + api_endpoint
 
         self.debug("### (%s) calling %s" % (proto, url))
-        req = URLRequest(url, post, headers)
-        with contextlib.closing(urlopen(req, post)) as res:
-            return json.load(res)
+        return json.loads(http_request(url, post, headers))
+
+        #req = URLRequest(url, post, headers)
+        #with contextlib.closing(urlopen(req, post)) as res:
+        #    return json.load(res)
 
 
     def send_signed_call(self, api_endpoint, params, reqid):
@@ -1332,6 +1366,9 @@ class Gox(BaseObject):
             if msg["message"] == "Invalid call":
                 self._on_invalid_call(msg)
                 return
+            if msg["message"] == "Order not found":
+                self._on_order_not_found(msg)
+                return
 
         # we should log this, helps with debugging
         self.debug(msg)
@@ -1375,6 +1412,17 @@ class Gox(BaseObject):
 
         else:
             self.debug("_on_invalid_call() ignoring:", msg)
+
+    def _on_order_not_found(self, msg):
+        """this means we have sent order/cancel with non-existing oid"""
+        parts = msg["id"].split(":")
+        oid = parts[1]
+        self.debug("### got 'Order not found' for", oid)
+        # we are now going to fake a user_order message (the one we
+        # obviously missed earlier) that will have the effect of
+        # removing the order cleanly.
+        fakemsg = {"user_order": {"oid": oid}}
+        self._on_op_private_user_order(fakemsg)
 
 
 class Order:
