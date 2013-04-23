@@ -74,7 +74,7 @@ class WebSocketConnectionClosedException(WebSocketException):
     pass
 
 default_timeout = None
-traceEnabled = True#False
+traceEnabled = False
 
 
 def enableTrace(tracable):
