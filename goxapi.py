@@ -57,6 +57,10 @@ FORCE_NO_FULLDEPTH = False
 FORCE_NO_HISTORY = False
 FORCE_HTTP_API = False
 
+SOCKETIO_HOST = "socketio.mtgox.com"
+WEBSOCKET_HOST = "websocket.mtgox.com"
+HTTP_HOST = "data.mtgox.com"
+
 USER_AGENT = "goxtool.py"
 
 def int2str(value_int, currency):
@@ -578,10 +582,6 @@ class History(BaseObject):
 class BaseClient(BaseObject):
     """abstract base class for SocketIOClient and WebsocketClient"""
 
-    SOCKETIO_HOST = "socketio.mtgox.com"
-    WEBSOCKET_HOST = "websocket.mtgox.com"
-    HTTP_HOST = "data.mtgox.com"
-
     _last_nonce = 0
     _nonce_lock = threading.Lock()
 
@@ -656,7 +656,7 @@ class BaseClient(BaseObject):
             self.debug("requesting initial full depth")
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
-            fulldepth = http_request(proto + "://" +  self.HTTP_HOST \
+            fulldepth = http_request(proto + "://" +  HTTP_HOST \
                 + "/api/2/BTC" + self.currency + "/money/depth/full")
             self.signal_fulldepth(self, (json.loads(fulldepth)))
 
@@ -683,7 +683,7 @@ class BaseClient(BaseObject):
             self.debug("requesting history")
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
-            json_hist = http_request(proto + "://" +  self.HTTP_HOST \
+            json_hist = http_request(proto + "://" +  HTTP_HOST \
                 + "/api/2/BTC" + self.currency + "/money/trades"
                 + querystring)
             history = json.loads(json_hist)
@@ -795,7 +795,7 @@ class BaseClient(BaseObject):
 
         use_ssl = self.config.get_bool("gox", "use_ssl")
         proto = {True: "https", False: "http"}[use_ssl]
-        url = proto + "://" + self.HTTP_HOST + "/api/2/" + api_endpoint
+        url = proto + "://" + HTTP_HOST + "/api/2/" + api_endpoint
 
         self.debug("### (%s) calling %s" % (proto, url))
         return json.loads(http_request(url, post, headers))
@@ -880,6 +880,7 @@ class WebsocketClient(BaseClient):
 
     def __init__(self, currency, secret, config):
         BaseClient.__init__(self, currency, secret, config)
+        self.hostname = WEBSOCKET_HOST
 
     def _recv_thread_func(self):
         """connect to the websocket and start receiving in an infinite loop.
@@ -889,11 +890,11 @@ class WebsocketClient(BaseClient):
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         port = {True: 443, False: 80}[use_ssl]
-        ws_origin = "%s:%d" % (self.WEBSOCKET_HOST, port)
+        ws_origin = "%s:%d" % (self.hostname, port)
         ws_headers = ["User-Agent: %s" % USER_AGENT]
         while not self._terminating:  #loop 0 (connect, reconnect)
             try:
-                ws_url = wsp + self.WEBSOCKET_HOST \
+                ws_url = wsp + self.hostname \
                     + "/mtgox?Currency=" + self.currency
 
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
@@ -995,7 +996,7 @@ class SocketIOClient(BaseClient):
 
     def __init__(self, currency, secret, config):
         BaseClient.__init__(self, currency, secret, config)
-        self.hostname = self.SOCKETIO_HOST
+        self.hostname = SOCKETIO_HOST
         self._timer.connect(self.slot_keepalive_timer)
 
     def _recv_thread_func(self):
