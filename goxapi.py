@@ -886,6 +886,8 @@ class WebsocketClient(BaseClient):
         reconnect_time = 1
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
+        port = {True: 442, False: 80}[use_ssl]
+        ws_origin = "%s:%d" % (self.WEBSOCKET_HOST, port)
         while not self._terminating:  #loop 0 (connect, reconnect)
             try:
                 ws_url = wsp + self.WEBSOCKET_HOST \
@@ -894,7 +896,7 @@ class WebsocketClient(BaseClient):
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
                 self.socket = websocket.WebSocket()
-                self.socket.connect(ws_url)
+                self.socket.connect(ws_url, origin=ws_origin)
                 self._time_last_received = time.time()
                 self.connected = True
                 self.debug("connected, subscribing needed channels")
@@ -1103,7 +1105,7 @@ class Gox(BaseObject):
         use_websocket = self.config.get_bool("gox", "use_plain_old_websocket")
         if "socketio" in FORCE_PROTOCOL:
             use_websocket = False
-        if FORCE_PROTOCOL == "websocket":
+        if "websocket" in FORCE_PROTOCOL:
             use_websocket = True
         if use_websocket:
             self.client = WebsocketClient(self.currency, secret, config)
