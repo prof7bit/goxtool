@@ -1699,15 +1699,16 @@ class OrderBook(BaseObject):
         """called by gox when the initial order list is downloaded,
         this will happen after connect or reconnect"""
         self.owns = []
-        for order in own_orders:
-            if order["currency"] == self.gox.currency:
-                self._add_own(Order(
-                    int(order["price"]["value_int"]),
-                    int(order["amount"]["value_int"]),
-                    order["type"],
-                    order["oid"],
-                    order["status"]
-                ))
+        if own_orders:
+            for order in own_orders:
+                if order["currency"] == self.gox.currency:
+                    self._add_own(Order(
+                        int(order["price"]["value_int"]),
+                        int(order["amount"]["value_int"]),
+                        order["type"],
+                        order["oid"],
+                        order["status"]
+                    ))
 
         self.signal_changed(self, None)
         self.signal_owns_changed(self, None)
