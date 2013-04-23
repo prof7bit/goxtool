@@ -57,6 +57,8 @@ FORCE_NO_FULLDEPTH = False
 FORCE_NO_HISTORY = False
 FORCE_HTTP_API = False
 
+USER_AGENT = "goxtool.py"
+
 def int2str(value_int, currency):
     """return currency integer formatted as a string"""
     if currency == "BTC":
@@ -102,6 +104,7 @@ def http_request(url, post=None, headers=None):
         headers = {}
     request = URLRequest(url, post, headers)
     request.add_header('Accept-encoding', 'gzip')
+    request.add_header('User-Agent:', USER_AGENT)
     data = ""
     try:
         with contextlib.closing(urlopen(request, post)) as res:
@@ -786,7 +789,6 @@ class BaseClient(BaseObject):
         sign = hmac.new(base64.b64decode(sec), prefix + post, hashlib.sha512).digest()
 
         headers = {
-            'User-Agent': 'goxtool.py',
             'Rest-Key': key,
             'Rest-Sign': base64.b64encode(sign)
         }
@@ -888,6 +890,7 @@ class WebsocketClient(BaseClient):
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         port = {True: 442, False: 80}[use_ssl]
         ws_origin = "%s:%d" % (self.WEBSOCKET_HOST, port)
+        ws_headers = ["User-Agent: %s" % USER_AGENT]
         while not self._terminating:  #loop 0 (connect, reconnect)
             try:
                 ws_url = wsp + self.WEBSOCKET_HOST \
@@ -896,7 +899,7 @@ class WebsocketClient(BaseClient):
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
                 self.socket = websocket.WebSocket()
-                self.socket.connect(ws_url, origin=ws_origin)
+                self.socket.connect(ws_url, origin=ws_origin, header=ws_headers)
                 self._time_last_received = time.time()
                 self.connected = True
                 self.debug("connected, subscribing needed channels")
@@ -962,7 +965,7 @@ class SocketIO(websocket.WebSocket):
             path_a += "?" + options["query"]
         self.io_sock.send("GET %s HTTP/1.1\r\n" % path_a)
         self.io_sock.send("Host: %s:%d\r\n" % (hostname, port))
-        self.io_sock.send("User-Agent: goxtool.py\r\n")
+        self.io_sock.send("User-Agent: %s\r\n" % USER_AGENT)
         self.io_sock.send("Accept: text/plain\r\n")
         self.io_sock.send("Connection: keep-alive\r\n")
         self.io_sock.send("\r\n")
