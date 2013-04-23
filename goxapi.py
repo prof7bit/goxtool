@@ -888,7 +888,7 @@ class WebsocketClient(BaseClient):
         reconnect_time = 1
         use_ssl = self.config.get_bool("gox", "use_ssl")
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
-        port = {True: 442, False: 80}[use_ssl]
+        port = {True: 443, False: 80}[use_ssl]
         ws_origin = "%s:%d" % (self.WEBSOCKET_HOST, port)
         ws_headers = ["User-Agent: %s" % USER_AGENT]
         while not self._terminating:  #loop 0 (connect, reconnect)
