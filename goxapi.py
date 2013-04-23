@@ -147,7 +147,7 @@ class GoxConfig(SafeConfigParser):
 
     _DEFAULTS = [["gox", "currency", "USD"]
                 ,["gox", "use_ssl", "True"]
-                ,["gox", "use_plain_old_websocket", "False"]
+                ,["gox", "use_plain_old_websocket", "True"]
                 ,["gox", "use_http_api", "False"]
                 ,["gox", "load_fulldepth", "True"]
                 ,["gox", "load_history", "True"]
@@ -900,6 +900,9 @@ class WebsocketClient(BaseClient):
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
                 self.socket = websocket.WebSocket()
+                # The server is somewhat picky when it comes to the exact
+                # host:port syntax of the origin header, so I am supplying
+                # my own origin header instead of the auto-generated one
                 self.socket.connect(ws_url, origin=ws_origin, header=ws_headers)
                 self._time_last_received = time.time()
                 self.connected = True
