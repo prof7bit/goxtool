@@ -84,11 +84,11 @@ def int2float(value_int, currency):
 def float2int(value_float, currency):
     """convert float value to integer, determine the factor by currency name"""
     if currency == "BTC":
-        return int(value_float * 100000000)
+        return int(round(value_float * 100000000))
     if currency == "JPY":
-        return int(value_float * 1000)
+        return int(round(value_float * 1000))
     else:
-        return int(value_float * 100000)
+        return int(round(value_float * 100000))
 
 def http_request(url, post=None, headers=None):
     """request data from the HTTP API, returns a string"""
