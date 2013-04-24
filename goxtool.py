@@ -464,6 +464,7 @@ class WinStatus(Win):
         self.gox = gox
         self.order_lag = 0
         self.order_lag_txt = ""
+        self.sorted_currency_list = []
         gox.signal_orderlag.connect(self.slot_orderlag)
         gox.signal_wallet.connect(self.slot_changed)
         gox.orderbook.signal_changed.connect(self.slot_changed)
@@ -473,14 +474,31 @@ class WinStatus(Win):
         """place it at the top of the terminal"""
         self.height = HEIGHT_STATUS
 
+    def sort_currency_list_if_changed(self):
+        """sort the currency list in the wallet for better display,
+        sort it only if it has changed, otherwise leave it as it is"""
+        currency_list = self.gox.wallet.keys()
+        if len(currency_list) == len(self.sorted_currency_list):
+            return
+
+        # now we will bring BTC and gox.currency to the front and sort the
+        # the rest of the list of names by acount balance in descending order
+        currency_list.remove("BTC")
+        currency_list.remove(self.gox.currency)
+        currency_list.sort(key=lambda name: -self.gox.wallet[name])
+        currency_list.insert(0, self.gox.currency)
+        currency_list.insert(0, "BTC")
+        self.sorted_currency_list = currency_list
+
     def paint(self):
         """paint the complete status"""
+        self.sort_currency_list_if_changed()
         self.win.bkgd(" ", COLOR_PAIR["status_text"])
         self.win.erase()
         line1 = "Currency: " + self.gox.currency + " | "
         line1 += "Account: "
-        if len(self.gox.wallet):
-            for currency in self.gox.wallet:
+        if len(self.sorted_currency_list):
+            for currency in self.sorted_currency_list:
                 line1 += currency + " " \
                 + goxapi.int2str(self.gox.wallet[currency], currency).strip() \
                 + " + "

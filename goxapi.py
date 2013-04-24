@@ -1238,6 +1238,7 @@ class Gox(BaseObject):
             for currency in gox_wallet:
                 self.wallet[currency] = int(
                     gox_wallet[currency]["Balance"]["value_int"])
+
             self.signal_wallet(self, ())
 
         elif reqid == "order_lag":
