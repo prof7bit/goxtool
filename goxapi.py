@@ -727,6 +727,7 @@ class BaseClient(BaseObject):
         """send queued http requests to the http API (only used when
         http api is forced, normally this is much slower)"""
         while not self._terminating:
+            # pop queued request from the queue and process it
             (api_endpoint, params, reqid) = self.http_requests.get(True)
             try:
                 answer = self.http_signed_call(api_endpoint, params)
@@ -737,26 +738,20 @@ class BaseClient(BaseObject):
                     ret = {"op": "result", "id": reqid, "result": answer["data"]}
                     self.signal_recv(self, (json.dumps(ret)))
                 else:
-                    self.debug("### http error result:", answer, reqid)
-                    retry = True
-
-                    if "error" in answer and answer["error"] == "Order not found":
-                        self.debug("### could not cancel non existing order")
-                        # the owns list is out of sync. Translate it into an
-                        # op:remark message and send it to the recv signal as if
-                        # this had come from the streming API, that will make
-                        # it properly handle this condition and remove it.
+                    if "error" in answer:
+                        # these are errors like "Order amount is too low"
+                        # or "Order not found" and the like, we send them
+                        # to signal_recv() as if they had come from the
+                        # streaming API beause Gox() can handle these errors.
                         fake_remark_msg = {
                             "op": "remark",
                             "success": False,
-                            "message": "Order not found",
+                            "message": answer["error"],
                             "id": reqid
                         }
                         self.signal_recv(self, (json.dumps(fake_remark_msg)))
-                        retry = False
-
-                    if retry:
-                        self.enqueue_http_request(api_endpoint, params, reqid)
+                    else:
+                        self.debug("### unexpected http result:", answer, reqid)
 
             except Exception as exc:
                 # should this ever happen? HTTP 5xx wont trigger this,
@@ -1379,6 +1374,9 @@ class Gox(BaseObject):
             if msg["message"] == "Order not found":
                 self._on_order_not_found(msg)
                 return
+            if msg["message"] == "Order amount is too low":
+                self._on_order_amount_too_low(msg)
+                return
 
         # we should log this, helps with debugging
         self.debug(msg)
@@ -1433,6 +1431,11 @@ class Gox(BaseObject):
         # removing the order cleanly.
         fakemsg = {"user_order": {"oid": oid}}
         self._on_op_private_user_order(fakemsg)
+
+    def _on_order_amount_too_low(self, _msg):
+        """we received an order_amount too low message."""
+        self.debug("Server said: 'Order amount is too low'")
+        self.count_submitted -= 1
 
 
 class Order:
