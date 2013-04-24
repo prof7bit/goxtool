@@ -3,7 +3,7 @@
   <head>
     <meta http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8" />
     <title>goxtool.py</title>
-    <link rel="stylesheet" href="styles.css" type="text/css" />
+    <link type="text/css" href="styles.css" rel="stylesheet" />
   </head>
   <body>
     <h1>goxtool.py</h1>
@@ -20,8 +20,8 @@
     Donations are welcome: 1D7ELjGofBiRUJNwK55DVC3XWYjfN77CA3<br />
     <br />
     When goxtool is running it looks like this:<br />
-    <img style="width: 1024px; height: 743px;" alt="goxtool.py screenshot of terminal running goxtool"
-      src="screenshot1.png" /><br />
+    <img src="screenshot1.png" alt="goxtool.py screenshot of terminal running goxtool"
+      style="width: 1024px; height: 743px;" /><br />
     <span style="font-weight: bold;"> </span>
     <h2>How to install </h2>
     Open a terminal in an empty folder or in the folder you usually use to clone
@@ -79,7 +79,7 @@
     ini file.<br />
     <br />
     If you experience a high lag between sending an order and the ack (the
-    op:result not appearing immediately which is happening during times of
+    op:result) not appearing immediately which is happening during times of
     really high volume then you should consider also adding <span class="codeword">--use-http</span>
     to make it send trading commands via http. Http makes it slightly slower to
     execute many trades in a row but has been much more reliable when mtgox was
