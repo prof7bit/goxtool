@@ -949,10 +949,12 @@ class StrategyManager():
 
                 # pylint: disable=W0703
                 except Exception:
+                    self.gox.debug("### error while loading strategy %s.py, traceback follows:" % name)
                     self.gox.debug(traceback.format_exc())
 
             except ImportError:
-                self.gox.debug("### could not import %s.py" % name)
+                self.gox.debug("### could not import %s.py, traceback follows:" % name)
+                self.gox.debug(traceback.format_exc())
 
 
 #
