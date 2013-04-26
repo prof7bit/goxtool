@@ -1699,11 +1699,11 @@ class OrderBook(BaseObject):
         """update total fiat on the bid side"""
         self.total_bid += int2float(volume, "BTC") * int2float(price, self.gox.currency)
 
-    def get_own_volume_at(self, price):
+    def get_own_volume_at(self, price, typ=None):
         """returns the sum of the volume of own orders at a given price"""
         volume = 0
         for order in self.owns:
-            if order.price == price:
+            if order.price == price and (not typ or typ == order.typ):
                 volume += order.volume
         return volume
 

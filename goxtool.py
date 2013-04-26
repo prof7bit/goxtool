@@ -283,12 +283,12 @@ class WinOrderBook(Win):
             if i == 0:
                 this_bin = price
                 vol = book.asks[i].volume
-                ownvol = book.get_own_volume_at(price)
+                ownvol = book.get_own_volume_at(price, "ask")
             else:
                 if price <= this_bin:
                     # still the same bin, add volumes
                     vol += book.asks[i].volume
-                    ownvol += book.get_own_volume_at(price)
+                    ownvol += book.get_own_volume_at(price, "ask")
                 else:
                     # paint the existing bin and...
                     paint_row(pos, this_bin, vol, ownvol, col_ask)
@@ -299,7 +299,7 @@ class WinOrderBook(Win):
                         vol += book.asks[i].volume
                     else:
                         vol = book.asks[i].volume
-                    ownvol = book.get_own_volume_at(price)
+                    ownvol = book.get_own_volume_at(price, "ask")
             i += 1
         if cnt and pos >= 0:
             paint_row(pos, this_bin, vol, ownvol, col_ask)
@@ -315,12 +315,12 @@ class WinOrderBook(Win):
             if i == 0:
                 this_bin = price
                 vol = book.bids[i].volume
-                ownvol = book.get_own_volume_at(price)
+                ownvol = book.get_own_volume_at(price, "bid")
             else:
                 if price >= this_bin:
                     # still the same bin, add volumes
                     vol += book.bids[i].volume
-                    ownvol += book.get_own_volume_at(price)
+                    ownvol += book.get_own_volume_at(price, "bid")
                 else:
                     # paint the current bin and...
                     paint_row(pos, this_bin, vol, ownvol, col_bid)
@@ -331,7 +331,7 @@ class WinOrderBook(Win):
                         vol += book.bids[i].volume
                     else:
                         vol = book.bids[i].volume
-                    ownvol = book.get_own_volume_at(price)
+                    ownvol = book.get_own_volume_at(price, "bid")
             i += 1
         if cnt and pos < self.height:
             paint_row(pos, this_bin, vol, ownvol, col_bid)
