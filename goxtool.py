@@ -1132,10 +1132,17 @@ def main():
         help="do not download full history (useful for debugging)")
     argp.add_argument('--use-http', action="store_true", default="",
         help="use http api for trading (useful when socketio is lagging like hell")
+    argp.add_argument('--password', action="store", default=None,
+        help="password for decryption of stored key. This is a dangerous option "
+            +"because the password might end up being stored in the history file "
+            +"of your shell, for example in ~/.bash_history. Use this only when "
+            +"starting it from within a script and then of course you need to "
+            +"keep this start script in a secure place!")
     args = argp.parse_args()
 
     config = goxapi.GoxConfig("goxtool.ini")
     secret = goxapi.Secret(config)
+    secret.password_from_commandline_option = args.password
     if args.add_secret:
         # prompt for secret, encrypt, write to .ini and then exit the program
         secret.prompt_encrypt()

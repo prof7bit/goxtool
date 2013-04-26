@@ -358,6 +358,7 @@ class Secret:
         self.config = config
         self.key = ""
         self.secret = ""
+        self.password_from_commandline_option = None
 
     def decrypt(self, password):
         """decrypt "secret_secret" from the ini file with the given password.
@@ -419,7 +420,11 @@ class Secret:
         if sec == "" or key == "":
             return self.S_NO_SECRET
 
-        password = getpass.getpass("enter passphrase for secret: ")
+        if self.password_from_commandline_option:
+            password = self.password_from_commandline_option
+        else:
+            password = getpass.getpass("enter passphrase for secret: ")
+
         result = self.decrypt(password)
         if result != self.S_OK:
             print("")
