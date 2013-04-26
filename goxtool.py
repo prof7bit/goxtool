@@ -21,7 +21,7 @@ framework for experimenting with trading bots
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0301,C0302,R0902,R0903,R0912,R0913,R0915,R0922
+# pylint: disable=C0301,C0302,R0902,R0903,R0912,R0913,R0914,R0915,R0922,W0703
 
 import argparse
 import curses
@@ -248,6 +248,14 @@ class WinOrderBook(Win):
 
     def paint(self):
         """paint the visible portion of the orderbook"""
+
+        def paint_row(pos, price, vol, ownvol, color):
+            """paint a row in the orderbook (bid or ask)"""
+            self.addstr(pos, 0,  goxapi.int2str(price, book.gox.currency), color)
+            self.addstr(pos, 12, goxapi.int2str(vol, "BTC"), col_vol)
+            if ownvol:
+                self.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
+
         self.win.bkgd(" ",  COLOR_PAIR["book_text"])
         self.win.erase()
         mid = self.height / 2
@@ -256,33 +264,78 @@ class WinOrderBook(Win):
         col_vol = COLOR_PAIR["book_vol"]
         col_own = COLOR_PAIR["book_own"]
 
+        sum_total = self.gox.config.get_bool("goxtool", "orderbook_sum_total")
+        group = self.gox.config.get_float("goxtool", "orderbook_group")
+        group = goxapi.float2int(group, self.gox.currency)
+        if group == 0:
+            group = 1
+
         # print the asks
-        # pylint: disable=C0301
         book = self.gox.orderbook
+        cnt = len(book.asks)
+
         pos = mid - 1
         i = 0
-        cnt = len(book.asks)
+        vol = 0
+        ownvol = 0
         while pos >= 0 and  i < cnt:
-            self.addstr(pos, 0,  goxapi.int2str(book.asks[i].price, book.gox.currency), col_ask)
-            self.addstr(pos, 12, goxapi.int2str(book.asks[i].volume, "BTC"), col_vol)
-            ownvol = book.get_own_volume_at(book.asks[i].price)
-            if ownvol:
-                self.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
-            pos -= 1
+            price = book.asks[i].price
+            if i == 0:
+                this_bin = price
+                vol = book.asks[i].volume
+                ownvol = book.get_own_volume_at(price)
+            else:
+                if price <= this_bin:
+                    # still the same bin, add volumes
+                    vol += book.asks[i].volume
+                    ownvol += book.get_own_volume_at(price)
+                else:
+                    # paint the existing bin and...
+                    paint_row(pos, this_bin, vol, ownvol, col_ask)
+                    pos -= 1
+                    # ...begin a new bin
+                    this_bin = int(math.ceil(float(price) / group) * group)
+                    if sum_total:
+                        vol += book.asks[i].volume
+                    else:
+                        vol = book.asks[i].volume
+                    ownvol = book.get_own_volume_at(price)
             i += 1
+        if cnt and pos >= 0:
+            paint_row(pos, this_bin, vol, ownvol, col_ask)
 
         # print the bids
+        cnt = len(book.bids)
         pos = mid + 1
         i = 0
-        cnt = len(book.bids)
+        vol = 0
+        ownvol = 0
         while pos < self.height and  i < cnt:
-            self.addstr(pos, 0,  goxapi.int2str(book.bids[i].price, book.gox.currency), col_bid)
-            self.addstr(pos, 12, goxapi.int2str(book.bids[i].volume, "BTC"), col_vol)
-            ownvol = book.get_own_volume_at(book.bids[i].price)
-            if ownvol:
-                self.addstr(pos, 28, goxapi.int2str(ownvol, "BTC"), col_own)
-            pos += 1
+            price = book.bids[i].price
+            if i == 0:
+                this_bin = price
+                vol = book.bids[i].volume
+                ownvol = book.get_own_volume_at(price)
+            else:
+                if price >= this_bin:
+                    # still the same bin, add volumes
+                    vol += book.bids[i].volume
+                    ownvol += book.get_own_volume_at(price)
+                else:
+                    # paint the current bin and...
+                    paint_row(pos, this_bin, vol, ownvol, col_bid)
+                    pos += 1
+                    # ...begin a new bin
+                    this_bin = int(math.floor(float(price) / group) * group)
+                    if sum_total:
+                        vol += book.bids[i].volume
+                    else:
+                        vol = book.bids[i].volume
+                    ownvol = book.get_own_volume_at(price)
             i += 1
+        if cnt and pos < self.height:
+            paint_row(pos, this_bin, vol, ownvol, col_bid)
+
 
     def slot_changed(self, book, dummy_data):
         """Slot for orderbook.signal_changed"""
@@ -947,7 +1000,6 @@ class StrategyManager():
                     strategy_object = strategy_module.Strategy(self.gox)
                     self.strategy_object_list.append(strategy_object)
 
-                # pylint: disable=W0703
                 except Exception:
                     self.gox.debug("### error while loading strategy %s.py, traceback follows:" % name)
                     self.gox.debug(traceback.format_exc())
@@ -963,26 +1015,35 @@ class StrategyManager():
 #
 
 def main():
-    """main funtion, called from within the curses.wrapper"""
+    """main funtion, called at the start of the program"""
 
+    debug_tb = []
     def curses_loop(stdscr):
-        """This code runs within curses environment"""
+        """Only the code inside this function runs within the curses wrapper"""
 
-        init_colors()
-
-        gox = goxapi.Gox(secret, config)
-
-        conwin = WinConsole(stdscr, gox)
-        bookwin = WinOrderBook(stdscr, gox)
-        statuswin = WinStatus(stdscr, gox)
-        chartwin = WinChart(stdscr, gox)
-
-        logwriter = LogWriter(gox)
-        printhook = PrintHook(gox)
-        strategy_manager = StrategyManager(gox, strat_mod_list)
-
-        gox.start()
+        # this function may under no circumstancs raise an exception, so I'm
+        # wrapping everything into try/except (should actually never happen
+        # anyways but when it happens during coding or debugging it would
+        # leave the terminal in an unusable state and this must be avoded).
+        # We have a list debug_tb[] where we can append tracebacks and
+        # after curses uninitialized properly and the terminal is restored
+        # we can print them.
         try:
+            init_colors()
+            gox = goxapi.Gox(secret, config)
+
+            logwriter = LogWriter(gox)
+            printhook = PrintHook(gox)
+
+            conwin = WinConsole(stdscr, gox)
+            bookwin = WinOrderBook(stdscr, gox)
+            statuswin = WinStatus(stdscr, gox)
+            chartwin = WinChart(stdscr, gox)
+
+
+            strategy_manager = StrategyManager(gox, strat_mod_list)
+
+            gox.start()
             while True:
                 key = conwin.win.getch()
                 if key == ord("q"):
@@ -1012,15 +1073,42 @@ def main():
         except KeyboardInterrupt:
             gox.debug("got Ctrl+C, trying to shut down cleanly.")
             gox.debug("Hint: did you know you can also exit with 'q'?")
+
         except Exception:
-            gox.debug(traceback.format_exc())
+            debug_tb.append(traceback.format_exc())
 
-        strategy_manager.unload()
-        gox.stop()
-        printhook.close()
-        logwriter.close()
-        # The End.
+        # Now trying to shutdown everything in an orderly manner.
+        # Since we are still inside curses but we don't know whether
+        # the printhook or the logwriter was initialized properly already
+        # or whether it crashed earlier we cannot print here and we also
+        # cannot log, so we put all tracebacks into the debug_tb list to
+        # print them later once the terminal is properly restored again.
+        try:
+            strategy_manager.unload()
+        except Exception:
+            debug_tb.append(traceback.format_exc())
 
+        try:
+            gox.stop()
+        except Exception:
+            debug_tb.append(traceback.format_exc())
+
+        try:
+            printhook.close()
+        except Exception:
+            debug_tb.append(traceback.format_exc())
+
+        try:
+            logwriter.close()
+        except Exception:
+            debug_tb.append(traceback.format_exc())
+
+        # Curses loop ends here, we must reach this point under all circumstances.
+        # Now curses will uninitialize itself and restore the terminal.
+
+
+    # Here it begins. The very first thing is to always set US or GB locale
+    # to have always the same well defined behavior for number formatting.
     for loc in ["en_US.UTF8", "en_GB.UTF8", "en_EN", "en_GB", "C"]:
         try:
             locale.setlocale(locale.LC_NUMERIC, loc)
@@ -1057,13 +1145,19 @@ def main():
         goxapi.FORCE_NO_FULLDEPTH = args.no_fulldepth
         goxapi.FORCE_NO_HISTORY = args.no_history
         goxapi.FORCE_HTTP_API = args.use_http
+
+        # if its ok then we can finally enter the curses main loop
         if secret.prompt_decrypt() != secret.S_FAIL_FATAL:
             curses.wrapper(curses_loop)
-            print
-            print "*******************************************************"
-            print "*  Please donate: 1D7ELjGofBiRUJNwK55DVC3XWYjfN77CA3  *"
-            print "*******************************************************"
-
+            if len(debug_tb):
+                print "\n\n*** error(s) in curses_loop() that caused unclean shutdown:\n"
+                for trb in debug_tb:
+                    print trb
+            else:
+                print
+                print "*******************************************************"
+                print "*  Please donate: 1D7ELjGofBiRUJNwK55DVC3XWYjfN77CA3  *"
+                print "*******************************************************"
 
 if __name__ == "__main__":
     main()

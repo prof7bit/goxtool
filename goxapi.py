@@ -155,6 +155,8 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "secret_key", ""]
                 ,["gox", "secret_secret", ""]
                 ,["goxtool", "set_xterm_title", "True"]
+                ,["goxtool", "orderbook_group", "0"]
+                ,["goxtool", "orderbook_sum_total", "False"]
                 ]
 
     def __init__(self, filename):
@@ -201,6 +203,14 @@ class GoxConfig(SafeConfigParser):
             return int(vstr)
         except ValueError:
             return 0
+
+    def get_float(self, sect, opt):
+        """get int value from config"""
+        vstr = self.get_safe(sect, opt)
+        try:
+            return float(vstr)
+        except ValueError:
+            return 0.0
 
     def _default(self, section, option, default):
         """create a default option if it does not yet exist"""
