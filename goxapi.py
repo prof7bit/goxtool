@@ -108,7 +108,7 @@ def http_request(url, post=None, headers=None):
         headers = {}
     request = URLRequest(url, post, headers)
     request.add_header('Accept-encoding', 'gzip')
-    request.add_header('User-Agent:', USER_AGENT)
+    request.add_header('User-Agent', USER_AGENT)
     data = ""
     try:
         with contextlib.closing(urlopen(request, post)) as res:
