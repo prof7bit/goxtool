@@ -283,12 +283,12 @@ class WinOrderBook(Win):
             if i == 0:
                 this_bin = price
                 vol = book.asks[i].volume
-                ownvol = book.get_own_volume_at(price, "ask")
+                ownvol = book.asks[i].own_volume
             else:
                 if price <= this_bin:
                     # still the same bin, add volumes
                     vol += book.asks[i].volume
-                    ownvol += book.get_own_volume_at(price, "ask")
+                    ownvol += book.asks[i].own_volume
                 else:
                     # paint the existing bin and...
                     paint_row(pos, this_bin, vol, ownvol, col_ask)
@@ -299,7 +299,7 @@ class WinOrderBook(Win):
                         vol += book.asks[i].volume
                     else:
                         vol = book.asks[i].volume
-                    ownvol = book.get_own_volume_at(price, "ask")
+                    ownvol = book.asks[i].own_volume
             i += 1
         if cnt and pos >= 0:
             paint_row(pos, this_bin, vol, ownvol, col_ask)
@@ -315,12 +315,12 @@ class WinOrderBook(Win):
             if i == 0:
                 this_bin = price
                 vol = book.bids[i].volume
-                ownvol = book.get_own_volume_at(price, "bid")
+                ownvol = book.bids[i].own_volume
             else:
                 if price >= this_bin:
                     # still the same bin, add volumes
                     vol += book.bids[i].volume
-                    ownvol += book.get_own_volume_at(price, "bid")
+                    ownvol += book.bids[i].own_volume
                 else:
                     # paint the current bin and...
                     paint_row(pos, this_bin, vol, ownvol, col_bid)
@@ -331,7 +331,7 @@ class WinOrderBook(Win):
                         vol += book.bids[i].volume
                     else:
                         vol = book.bids[i].volume
-                    ownvol = book.get_own_volume_at(price, "bid")
+                    ownvol = book.bids[i].own_volume
             i += 1
         if cnt and pos < self.height:
             paint_row(pos, this_bin, vol, ownvol, col_bid)
@@ -425,8 +425,136 @@ class WinChart(Win):
                     curses.ACS_VLINE, COLOR_PAIR["chart_text"])
 
     def paint(self):
-        """paint the visible portion of the chart"""
+        typ = self.gox.config.get_string("goxtool", "display_right")
+        try:
+            {"history_chart": self.paint_history_chart
+            ,"depth_chart": self.paint_depth_chart
+            }[typ]()
+        except KeyError:
+            self.paint_history_chart()
 
+    def paint_depth_chart(self):
+        """paint a depth chart"""
+
+        # pylint: disable=C0103
+        if self.gox.currency == "JPY":
+            BAR_LEFT_EDGE = 7
+            FORMAT_STRING = "%6.0f"
+        else:
+            BAR_LEFT_EDGE = 8
+            FORMAT_STRING = "%7.2f"
+
+        def paint_depth(pos, price, vol, own, col_price):
+            """paint one row of the depth chart"""
+            i = 0
+            pricestr = FORMAT_STRING % goxapi.int2float(price, self.gox.currency)
+            self.addstr(pos, 0, pricestr, col_price)
+            for i in range(int(vol * mult_x)):
+                # pylint: disable=E1101
+                self.win.addch(pos, BAR_LEFT_EDGE + i, curses.ACS_CKBOARD, col_bar)
+            if own:
+                self.addstr(pos, 1 + i + BAR_LEFT_EDGE, "o", col_own)
+
+        self.win.bkgd(" ",  COLOR_PAIR["chart_text"])
+        self.win.erase()
+
+        book = self.gox.orderbook
+        if not book.bid or not book.ask:
+            # orderbook is not initialized yet, paint nothing
+            return
+
+        col_bar = COLOR_PAIR["book_vol"]
+        col_bid = COLOR_PAIR["book_bid"]
+        col_ask = COLOR_PAIR["book_ask"]
+        col_own = COLOR_PAIR["book_own"]
+
+        group = self.gox.config.get_float("goxtool", "depth_chart_group")
+        if group == 0:
+            group = 1
+        group = goxapi.float2int(group, self.gox.currency)
+
+        bin_asks = []
+        bin_bids = []
+        mid = self.height / 2
+
+        # sum up the asks
+        cnt = len(book.asks)
+        bin_vol = 0
+        own_vol = 0
+        pos = mid - 1
+        i = 0
+        while i < cnt and pos >= 0:
+            level = book.asks[i]
+            price = level.price
+            if i == 0:
+                bin_price = int(math.ceil(float(price) / group) * group)
+            if price > bin_price:
+                bin_asks.append((bin_price, bin_vol, own_vol))
+                pos -= 1
+                bin_price = int(math.ceil(float(price) / group) * group)
+                own_vol = level.own_volume
+            else:
+                own_vol += level.own_volume
+            bin_vol += level.volume
+            i += 1
+
+        #append the last one
+        if bin_vol:
+            bin_asks.append((bin_price, bin_vol, own_vol))
+
+        max_vol_ask = bin_vol
+
+        # sum up the bids
+        cnt = len(book.bids)
+        bin_vol = 0
+        own_vol = 0
+        pos = mid + 1
+        i = 0
+        while i < cnt and pos < self.height:
+            level = book.bids[i]
+            price = level.price
+            if i == 0:
+                bin_price = int(math.floor(float(price) / group) * group)
+            if price < bin_price:
+                bin_bids.append((bin_price, bin_vol, own_vol))
+                pos += 1
+                bin_price = int(math.floor(float(price) / group) * group)
+                own_vol = level.own_volume
+            else:
+                own_vol += level.own_volume
+            bin_vol += level.volume * price / book.bid
+            i += 1
+
+        #append the last one
+        if bin_vol:
+            bin_bids.append((bin_price, bin_vol, own_vol))
+
+        max_vol_bid = bin_vol
+
+        if not max_vol_ask:
+            return
+        if not max_vol_bid:
+            return
+
+        max_vol_tot = max(max_vol_ask, max_vol_bid)
+        mult_x = float(self.width - BAR_LEFT_EDGE - 1) / max_vol_tot
+
+        # paint the asks
+        pos = mid - 1
+        while len(bin_asks) and pos >= 0:
+            (price, vol, own) = bin_asks.pop(0)
+            paint_depth(pos, price, vol, own, col_ask)
+            pos -= 1
+
+        # paint the bids
+        pos = mid + 1
+        while len(bin_bids) and pos < self.height:
+            (price, vol, own) = bin_bids.pop(0)
+            paint_depth(pos, price, vol, own, col_bid)
+            pos += 1
+
+    def paint_history_chart(self):
+        """paint a history candlestick chart"""
 
         self.win.bkgd(" ",  COLOR_PAIR["chart_text"])
         self.win.erase()
@@ -537,7 +665,8 @@ class WinStatus(Win):
         # now we will bring BTC and gox.currency to the front and sort the
         # the rest of the list of names by acount balance in descending order
         currency_list.remove("BTC")
-        currency_list.remove(self.gox.currency)
+        if self.gox.currency in currency_list:
+            currency_list.remove(self.gox.currency)
         currency_list.sort(key=lambda name: -self.gox.wallet[name])
         currency_list.insert(0, self.gox.currency)
         currency_list.insert(0, "BTC")
@@ -552,9 +681,10 @@ class WinStatus(Win):
         line1 += "Account: "
         if len(self.sorted_currency_list):
             for currency in self.sorted_currency_list:
-                line1 += currency + " " \
-                + goxapi.int2str(self.gox.wallet[currency], currency).strip() \
-                + " + "
+                if currency in self.gox.wallet:
+                    line1 += currency + " " \
+                    + goxapi.int2str(self.gox.wallet[currency], currency).strip() \
+                    + " + "
             line1 = line1.strip(" +")
         else:
             line1 += "No info (yet)"
@@ -1011,6 +1141,52 @@ class StrategyManager():
                 self.gox.debug(traceback.format_exc())
 
 
+def toggle_setting(gox, alternatives, option_name, direction):
+    """toggle a setting in the ini file"""
+    # pylint: disable=W0212
+    with goxapi.Signal._lock:
+        setting = gox.config.get_string("goxtool", option_name)
+        try:
+            newindex = (alternatives.index(setting) + direction) % len(alternatives)
+        except ValueError:
+            newindex = 0
+        gox.config.set("goxtool", option_name, alternatives[newindex])
+        gox.config.save()
+
+def toggle_depth_group(gox, direction):
+    """toggle the step width of the depth chart"""
+    if gox.currency == "JPY":
+        alt = ["10", "25", "50", "100", "200", "500", "1000"]
+    else:
+        alt = ["0.1", "0.25", "0.5", "1", "2", "5", "10"]
+    toggle_setting(gox, alt, "depth_chart_group", direction)
+    gox.orderbook.signal_changed(gox.orderbook, None)
+
+def toggle_orderbook_group(gox, direction):
+    """toggle the group width of the orderbook"""
+    if gox.currency == "JPY":
+        alt = ["0", "10", "25", "50", "100", "200", "500", "1000"]
+    else:
+        alt = ["0", "0.1", "0.25", "0.5", "1", "2", "5", "10"]
+    toggle_setting(gox, alt, "orderbook_group", direction)
+    gox.orderbook.signal_changed(gox.orderbook, None)
+
+def toggle_orderbook_sum(gox):
+    """toggle the summing in the orderbook on and off"""
+    alt = ["False", "True"]
+    toggle_setting(gox, alt, "orderbook_sum_total", 1)
+    gox.orderbook.signal_changed(gox.orderbook, None)
+
+def set_ini(gox, setting, value, signal, signal_sender, signal_params):
+    """set the ini value and then send a signal"""
+    # pylint: disable=W0212
+    with goxapi.Signal._lock:
+        gox.config.set("goxtool", setting, value)
+        gox.config.save()
+    signal(signal_sender, signal_params)
+
+
+
 #
 #
 # main program
@@ -1050,13 +1226,13 @@ def main():
                 key = conwin.win.getch()
                 if key == ord("q"):
                     break
-                if key == curses.KEY_F4:
+                elif key == curses.KEY_F4:
                     DlgNewOrderBid(stdscr, gox).modal()
-                if key == curses.KEY_F5:
+                elif key == curses.KEY_F5:
                     DlgNewOrderAsk(stdscr, gox).modal()
-                if key == curses.KEY_F6:
+                elif key == curses.KEY_F6:
                     DlgCancelOrders(stdscr, gox).modal()
-                if key == curses.KEY_RESIZE:
+                elif key == curses.KEY_RESIZE:
                     # pylint: disable=W0212
                     with goxapi.Signal._lock:
                         stdscr.erase()
@@ -1065,12 +1241,37 @@ def main():
                         bookwin.resize()
                         chartwin.resize()
                         statuswin.resize()
-                    continue
-                if key == ord("l"):
+                elif key == ord("l"):
                     strategy_manager.reload()
-                    continue
-                if key > ord("a") and key < ord("z"):
+
+                # which chart to show on the right side
+                elif key == ord("H"):
+                    set_ini(gox, "display_right", "history_chart",
+                        gox.history.signal_changed, gox.history, None)
+                elif key == ord("D"):
+                    set_ini(gox, "display_right", "depth_chart",
+                        gox.orderbook.signal_changed, gox.orderbook, None)
+
+                #  depth chart step
+                elif key == ord(","): # zoom out
+                    toggle_depth_group(gox, +1)
+                elif key == ord("."): # zoom in
+                    toggle_depth_group(gox, -1)
+
+                # orderbook grouping step
+                elif key == ord("-"): # zoom out (larger step)
+                    toggle_orderbook_group(gox, +1)
+                elif key == ord("+"): # zoom in (smaller step)
+                    toggle_orderbook_group(gox, -1)
+
+                elif key == ord("S"):
+                    toggle_orderbook_sum(gox)
+
+                # lowercase keys go to the strategy module
+                elif key > ord("a") and key < ord("z"):
                     gox.signal_keypress(gox, (key))
+                else:
+                    gox.debug("key pressed: key=%i" % key)
 
         except KeyboardInterrupt:
             gox.debug("got Ctrl+C, trying to shut down cleanly.")
