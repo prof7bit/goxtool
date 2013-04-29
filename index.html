@@ -3,7 +3,7 @@
   <head>
     <meta http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8" />
     <title>goxtool.py</title>
-    <link type="text/css" href="styles.css" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" type="text/css" />
   </head>
   <body>
     <h1>goxtool.py</h1>
@@ -20,8 +20,8 @@
     Donations are welcome: 1D7ELjGofBiRUJNwK55DVC3XWYjfN77CA3<br />
     <br />
     When goxtool is running it looks like this:<br />
-    <img src="screenshot1.png" alt="goxtool.py screenshot of terminal running goxtool"
-      style="width: 1024px; height: 743px;" /><br />
+    <img style="width: 1024px; height: 743px;" alt="goxtool.py screenshot of terminal running goxtool"
+      src="screenshot1.png" /><br />
     <span style="font-weight: bold;"> </span>
     <h2>How to install </h2>
     Open a terminal in an empty folder or in the folder you usually use to clone
@@ -41,13 +41,28 @@
     <br />
     <pre>cd goxtool<br />./goxtool.py</pre>
     <br />
-    Keyboard commands (only the ones useful in view-only mode, without MtGox
+    Keyboard commands (only the ones useful in view-only mode, without Mt.Gox
     account):<br />
     <ul>
-      <li><span class="keycmd">q</span> : quit</li>
-      <li><span class="keycmd">l</span> : (lower case "L") reload the strategy
+      <li><span class="keycmd">q</span> quit</li>
+      <li><span class="keycmd">l</span> (lower case "L") reload the strategy
         module (see advanced usage)</li>
+      <li><span class="keycmd">D</span> (shift + d) switch to depth chart view</li>
+      <li><span class="keycmd">H</span> (shift + h) switch to candlestick
+        history chart view</li>
+      <li><span class="keycmd">S</span> (shift + s) toggle summing up the volume
+        of order book levels  on/off</li>
+      <li><span class="keycmd">-</span> order book zoom out (increase group
+        size)</li>
+      <li><span class="keycmd">+</span> order book zoom in (decrease group size)</li>
+      <li><span class="keycmd">,</span> depth chart zoom out (increase group
+        size)</li>
+      <li><span class="keycmd">.</span> depth chart zoom in (decrease group
+        size)</li>
     </ul>
+    (There will be even more commands once you connect it to your Mt.Gox
+    account)<br />
+    <br />
     There is also a <span class="codeword">goxtool.ini</span> file, it will be
     created on the first start. In the <span class="codeword">.ini</span> file
     there are some parameters you can change, for example the currency you want
@@ -63,12 +78,13 @@
     update of orderbook and chart.<br />
     <h3>socketio or websocket? Which one is worse?<br />
     </h3>
-    The two options are <span class="codeword">socketio</span> or <span class="codeword">websocket</span>.
-    To start it with socketio:<br />
+    The two options are <span class="codeword">socketio</span> or <span class="codeword">websocket</span>,
+    the .ini setting for this is <span class="codeword">use_plain_old_websocket</span>.
+    To force it connecting with socketio:<br />
     <br />
     <pre>./goxtool.py --protocol=socketio</pre>
     <br />
-     To start it with the websocket server do this:<br />
+     To force it connecting to the websocket server do this:<br />
     <br />
     <pre>./goxtool.py --protocol=websocket</pre>
     <br />
