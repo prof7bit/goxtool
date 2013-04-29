@@ -449,11 +449,10 @@ class WinChart(Win):
             i = 0
             pricestr = FORMAT_STRING % goxapi.int2float(price, self.gox.currency)
             self.addstr(pos, 0, pricestr, col_price)
-            for i in range(int(vol * mult_x)):
-                # pylint: disable=E1101
-                self.win.addch(pos, BAR_LEFT_EDGE + i, curses.ACS_CKBOARD, col_bar)
+            length = int(vol * mult_x)
+            self.win.hline(pos, BAR_LEFT_EDGE, curses.ACS_CKBOARD, length, col_bar)
             if own:
-                self.addstr(pos, 1 + i + BAR_LEFT_EDGE, "o", col_own)
+                self.addstr(pos, length + BAR_LEFT_EDGE, "o", col_own)
 
         self.win.bkgd(" ",  COLOR_PAIR["chart_text"])
         self.win.erase()
