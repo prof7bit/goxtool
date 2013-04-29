@@ -1329,12 +1329,14 @@ def main():
         help="name of strategy module files, comma separated list, default=strategy.py")
     argp.add_argument('--protocol', action="store", default="",
         help="force protocol (socketio or websocket), ignore setting in .ini")
-    argp.add_argument('--no-fulldepth', action="store_true", default="",
+    argp.add_argument('--no-fulldepth', action="store_true", default=False,
         help="do not download full depth (useful for debugging)")
-    argp.add_argument('--no-history', action="store_true", default="",
+    argp.add_argument('--no-history', action="store_true", default=False,
         help="do not download full history (useful for debugging)")
-    argp.add_argument('--use-http', action="store_true", default="",
-        help="use http api for trading (useful when socketio is lagging like hell")
+    argp.add_argument('--use-http', action="store_true", default=False,
+        help="use http api for trading (more reliable, recommended")
+    argp.add_argument('--no-http', action="store_true", default=False,
+        help="use streaming api for trading (problematic when streaming api disconnects often)")
     argp.add_argument('--password', action="store", default=None,
         help="password for decryption of stored key. This is a dangerous option "
             +"because the password might end up being stored in the history file "
@@ -1355,6 +1357,7 @@ def main():
         goxapi.FORCE_NO_FULLDEPTH = args.no_fulldepth
         goxapi.FORCE_NO_HISTORY = args.no_history
         goxapi.FORCE_HTTP_API = args.use_http
+        goxapi.FORCE_NO_HTTP_API = args.no_http
 
         # if its ok then we can finally enter the curses main loop
         if secret.prompt_decrypt() != secret.S_FAIL_FATAL:

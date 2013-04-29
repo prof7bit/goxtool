@@ -56,6 +56,7 @@ FORCE_PROTOCOL = ""
 FORCE_NO_FULLDEPTH = False
 FORCE_NO_HISTORY = False
 FORCE_HTTP_API = False
+FORCE_NO_HTTP_API = False
 
 SOCKETIO_HOST = "socketio.mtgox.com"
 WEBSOCKET_HOST = "websocket.mtgox.com"
@@ -148,7 +149,7 @@ class GoxConfig(SafeConfigParser):
     _DEFAULTS = [["gox", "currency", "USD"]
                 ,["gox", "use_ssl", "True"]
                 ,["gox", "use_plain_old_websocket", "True"]
-                ,["gox", "use_http_api", "False"]
+                ,["gox", "use_http_api", "True"]
                 ,["gox", "load_fulldepth", "True"]
                 ,["gox", "load_history", "True"]
                 ,["gox", "history_timeframe", "15"]
@@ -360,6 +361,8 @@ class Secret:
         self.config = config
         self.key = ""
         self.secret = ""
+
+        # pylint: disable=C0103
         self.password_from_commandline_option = None
 
     def decrypt(self, password):
@@ -663,6 +666,15 @@ class BaseClient(BaseObject):
             self._last_nonce = nonce
             return nonce
 
+    def use_http(self):
+        """should we use http api? return true if yes"""
+        use_http = self.config.get_bool("gox", "use_http_api")
+        if FORCE_HTTP_API:
+            use_http = True
+        if FORCE_NO_HTTP_API:
+            use_http = False
+        return use_http
+
     def request_fulldepth(self):
         """start the fulldepth thread"""
 
@@ -723,7 +735,7 @@ class BaseClient(BaseObject):
         #self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
+        if self.use_http():
             self.enqueue_http_request("money/idkey", {}, "idkey")
             self.enqueue_http_request("money/orders", {}, "orders")
             self.enqueue_http_request("money/info", {}, "info")
@@ -859,7 +871,7 @@ class BaseClient(BaseObject):
         else:
             params = {"type": typ, "amount_int": volume}
 
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
+        if self.use_http():
             api = "BTC%s/money/order/add" % self.currency
             self.enqueue_http_request(api, params, reqid)
         else:
@@ -870,7 +882,7 @@ class BaseClient(BaseObject):
         """cancel an order"""
         params = {"oid": oid}
         reqid = "order_cancel:%s" % oid
-        if FORCE_HTTP_API or self.config.get_bool("gox", "use_http_api"):
+        if self.use_http():
             api = "money/order/cancel"
             self.enqueue_http_request(api, params, reqid)
         else:
