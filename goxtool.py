@@ -47,6 +47,8 @@ HEIGHT_CON      = 7
 WIDTH_ORDERBOOK = 45
 
 COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
+            ,["con_text_buy",   curses.COLOR_BLUE,    curses.COLOR_GREEN]
+            ,["con_text_sell",  curses.COLOR_BLUE,    curses.COLOR_RED]
             ,["status_text",    curses.COLOR_BLUE,    curses.COLOR_CYAN]
 
             ,["book_text",      curses.COLOR_BLACK,   curses.COLOR_BLUE]
@@ -226,7 +228,30 @@ class WinConsole(Win):
 
     def write(self, txt):
         """write a line of text, scroll if needed"""
-        self.win.addstr("\n" + txt,  COLOR_PAIR["con_text"])
+        # This code would break if the format of
+        # the log messages would ever change!
+
+
+        if " tick:" in txt:
+            if not self.gox.config.get_bool("goxtool", "show_ticker"):
+                return
+        if "depth:" in txt:
+            if not self.gox.config.get_bool("goxtool", "show_depth"):
+                return
+        if "trade:" in txt:
+            if "own order" in txt:
+                if not self.gox.config.get_bool("goxtool", "show_trade_own"):
+                    return
+            else:
+                if not self.gox.config.get_bool("goxtool", "show_trade"):
+                    return
+
+        col = COLOR_PAIR["con_text"]
+        if "trade: bid:" in txt:
+            col = COLOR_PAIR["con_text_buy"] + curses.A_BOLD
+        if "trade: ask:" in txt:
+            col = COLOR_PAIR["con_text_sell"] + curses.A_BOLD
+        self.win.addstr("\n" + txt,  col)
         self.done_paint()
 
 
@@ -446,10 +471,10 @@ class WinChart(Win):
 
         def paint_depth(pos, price, vol, own, col_price):
             """paint one row of the depth chart"""
-            i = 0
             pricestr = FORMAT_STRING % goxapi.int2float(price, self.gox.currency)
             self.addstr(pos, 0, pricestr, col_price)
             length = int(vol * mult_x)
+            # pylint: disable=E1101
             self.win.hline(pos, BAR_LEFT_EDGE, curses.ACS_CKBOARD, length, col_bar)
             if own:
                 self.addstr(pos, length + BAR_LEFT_EDGE, "o", col_own)

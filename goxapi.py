@@ -160,6 +160,10 @@ class GoxConfig(SafeConfigParser):
                 ,["goxtool", "orderbook_sum_total", "False"]
                 ,["goxtool", "display_right", "history_chart"]
                 ,["goxtool", "depth_chart_group", "1"]
+                ,["goxtool", "show_ticker", "True"]
+                ,["goxtool", "show_depth", "True"]
+                ,["goxtool", "show_trade", "True"]
+                ,["goxtool", "show_trade_own", "True"]
                 ]
 
     def __init__(self, filename):
@@ -1317,11 +1321,13 @@ class Gox(BaseObject):
         msg = msg["ticker"]
         if msg["sell"]["currency"] != self.currency:
             return
-        ask = int(msg["sell"]["value_int"])
         bid = int(msg["buy"]["value_int"])
+        ask = int(msg["sell"]["value_int"])
 
-        self.debug(" tick:  bid:", int2str(bid, self.currency),
-            "ask:", int2str(ask, self.currency))
+        self.debug(" tick: %s %s" % (
+            int2str(bid, self.currency),
+            int2str(ask, self.currency)
+        ))
         self.signal_ticker(self, (bid, ask))
 
     def _on_op_private_depth(self, msg):
@@ -1329,16 +1335,18 @@ class Gox(BaseObject):
         msg = msg["depth"]
         if msg["currency"] != self.currency:
             return
-        type_str = msg["type_str"]
+        typ = msg["type_str"]
         price = int(msg["price_int"])
         volume = int(msg["volume_int"])
         total_volume = int(msg["total_volume_int"])
 
-        self.debug(
-            "depth: ", type_str+":", int2str(price, self.currency),
-            "vol:", int2str(volume, "BTC"),
-            "total vol:", int2str(total_volume, "BTC"))
-        self.signal_depth(self, (type_str, price, volume, total_volume))
+        self.debug("depth: %s: %s @ %s total vol: %s" % (
+            typ,
+            int2str(volume, "BTC"),
+            int2str(price, self.currency),
+            int2str(total_volume, "BTC")
+        ))
+        self.signal_depth(self, (typ, price, volume, total_volume))
 
     def _on_op_private_trade(self, msg):
         """handle incoming trade mesage (op=private, private=trade)"""
@@ -1353,11 +1361,19 @@ class Gox(BaseObject):
         volume = int(msg["trade"]["amount_int"])
         typ = msg["trade"]["trade_type"]
 
-        self.debug(
-            "trade:      ", int2str(price, self.currency),
-            "vol:", int2str(volume, "BTC"),
-            "type:", typ
-        )
+        if own:
+            self.debug("trade: %s: %s @ %s (own order filled)" % (
+                typ,
+                int2str(volume, "BTC"),
+                int2str(price, self.currency)
+            ))
+        else:
+            self.debug("trade: %s: %s @ %s" % (
+                typ,
+                int2str(volume, "BTC"),
+                int2str(price, self.currency)
+            ))
+
         self.signal_trade(self, (date, price, volume, typ, own))
 
     def _on_op_private_user_order(self, msg):
@@ -1541,11 +1557,13 @@ class OrderBook(BaseObject):
         own orders list"""
         (dummy_date, price, volume, typ, own) = data
         if own:
-            self.debug("own order was filled")
-            # nothing special to do here, there will also be
+            # nothing special to do here (yet), there will also be
             # separate user_order messages to update my owns list
-
+            # and a copy of this trade message in the pblic channel
+            pass
         else:
+            # we update the orderbook. We could also wait for the depth
+            # message but we update the orderbook immediately.
             voldiff = -volume
             if typ == "bid":  # tryde_type=bid means an ask order was filled
                 self._repair_crossed_asks(price)
