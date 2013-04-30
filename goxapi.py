@@ -66,7 +66,7 @@ USER_AGENT = "goxtool.py"
 
 def int2str(value_int, currency):
     """return currency integer formatted as a string"""
-    if currency == "BTC":
+    if currency in "BTC LTC NMC":
         return ("%16.8f" % (value_int / 100000000.0))
     if currency == "JPY":
         return ("%12.3f" % (value_int / 1000.0))
@@ -75,7 +75,7 @@ def int2str(value_int, currency):
 
 def int2float(value_int, currency):
     """convert integer to float, determine the factor by currency name"""
-    if currency == "BTC":
+    if currency in "BTC LTC NMC":
         return value_int / 100000000.0
     if currency == "JPY":
         return value_int / 1000.0
@@ -84,7 +84,7 @@ def int2float(value_int, currency):
 
 def float2int(value_float, currency):
     """convert float value to integer, determine the factor by currency name"""
-    if currency == "BTC":
+    if currency in "BTC LTC NMC":
         return int(round(value_float * 100000000))
     if currency == "JPY":
         return int(round(value_float * 1000))
@@ -146,7 +146,8 @@ class GoxConfig(SafeConfigParser):
     in its constructor for the ini file, you can have separate configurations
     for separate Gox() instances"""
 
-    _DEFAULTS = [["gox", "currency", "USD"]
+    _DEFAULTS = [["gox", "base_currency", "BTC"]
+                ,["gox", "quote_currency", "USD"]
                 ,["gox", "use_ssl", "True"]
                 ,["gox", "use_plain_old_websocket", "True"]
                 ,["gox", "use_http_api", "True"]
@@ -172,6 +173,13 @@ class GoxConfig(SafeConfigParser):
         self.load()
         for (sect, opt, default) in self._DEFAULTS:
             self._default(sect, opt, default)
+
+        # upgrade from deprecated "currency" to "quote_currency"
+        # todo: remove this piece of code again in a few months
+        if self.has_option("gox", "currency"):
+            self.set("gox", "quote_currency", self.get_string("gox", "currency"))
+            self.remove_option("gox", "currency")
+            self.save()
 
     def save(self):
         """save the config to the .ini file"""
@@ -561,6 +569,10 @@ class History(BaseObject):
         """process the result of the fullhistory request"""
         (history) = data
 
+        if not len(history):
+            self.debug("### history download was empty")
+            return
+
         def get_time_round(date):
             """round timestamp to current candle timeframe"""
             return int(date / self.timeframe) * self.timeframe
@@ -609,7 +621,7 @@ class BaseClient(BaseObject):
     _last_nonce = 0
     _nonce_lock = threading.Lock()
 
-    def __init__(self, currency, secret, config):
+    def __init__(self, curr_base, curr_quote, secret, config):
         BaseObject.__init__(self)
 
         self.signal_recv        = Signal()
@@ -619,7 +631,11 @@ class BaseClient(BaseObject):
         self._timer = Timer(60)
         self._timer.connect(self.slot_timer)
 
-        self.currency = currency
+        self.curr_base = curr_base
+        self.curr_quote = curr_quote
+
+        self.currency = curr_quote # deprecated, use curr_quote instead
+
         self.secret = secret
         self.config = config
         self.socket = None
@@ -690,7 +706,8 @@ class BaseClient(BaseObject):
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
             fulldepth = http_request(proto + "://" +  HTTP_HOST \
-                + "/api/2/BTC" + self.currency + "/money/depth/full")
+                + "/api/2/" + self.curr_base + self.curr_quote \
+                + "/money/depth/full")
             self.signal_fulldepth(self, (json.loads(fulldepth)))
 
         start_thread(fulldepth_thread)
@@ -717,8 +734,8 @@ class BaseClient(BaseObject):
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
             json_hist = http_request(proto + "://" +  HTTP_HOST \
-                + "/api/2/BTC" + self.currency + "/money/trades"
-                + querystring)
+                + "/api/2/" + self.curr_base + self.curr_quote \
+                + "/money/trades" + querystring)
             history = json.loads(json_hist)
             if history["result"] == "success":
                 self.signal_fullhistory(self, history["data"])
@@ -828,11 +845,6 @@ class BaseClient(BaseObject):
         self.debug("### (%s) calling %s" % (proto, url))
         return json.loads(http_request(url, post, headers))
 
-        #req = URLRequest(url, post, headers)
-        #with contextlib.closing(urlopen(req, post)) as res:
-        #    return json.load(res)
-
-
     def send_signed_call(self, api_endpoint, params, reqid):
         """send a signed (authenticated) API call over the socket.io.
         This method will only succeed if the secret key is available,
@@ -851,8 +863,8 @@ class BaseClient(BaseObject):
             "call"     : api_endpoint,
             "nonce"    : nonce,
             "params"   : params,
-            "currency" : self.currency,
-            "item"     : "BTC"
+            "currency" : self.curr_quote,
+            "item"     : self.curr_base
         })
 
         # pylint: disable=E1101
@@ -876,7 +888,7 @@ class BaseClient(BaseObject):
             params = {"type": typ, "amount_int": volume}
 
         if self.use_http():
-            api = "BTC%s/money/order/add" % self.currency
+            api = "%s%s/money/order/add" % (self.curr_base , self.curr_quote)
             self.enqueue_http_request(api, params, reqid)
         else:
             api = "order/add"
@@ -906,8 +918,8 @@ class WebsocketClient(BaseClient):
     """this implements a connection to MtGox through the older (but faster)
     websocket protocol. Unfortuntely its just as unreliable as the socket.io."""
 
-    def __init__(self, currency, secret, config):
-        BaseClient.__init__(self, currency, secret, config)
+    def __init__(self, curr_base, curr_quote, secret, config):
+        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
         self.hostname = WEBSOCKET_HOST
 
     def _recv_thread_func(self):
@@ -923,7 +935,7 @@ class WebsocketClient(BaseClient):
         while not self._terminating:  #loop 0 (connect, reconnect)
             try:
                 ws_url = wsp + self.hostname \
-                    + "/mtgox?Currency=" + self.currency
+                    + "/mtgox?Currency=" + self.curr_quote
 
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
@@ -1025,8 +1037,8 @@ class SocketIOClient(BaseClient):
     """this implements a connection to MtGox using the new socketIO protocol.
     This should replace the older plain websocket API"""
 
-    def __init__(self, currency, secret, config):
-        BaseClient.__init__(self, currency, secret, config)
+    def __init__(self, curr_base, curr_quote, secret, config):
+        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
         self.hostname = SOCKETIO_HOST
         self._timer.connect(self.slot_keepalive_timer)
 
@@ -1043,7 +1055,7 @@ class SocketIOClient(BaseClient):
 
                 self.socket = SocketIO()
                 self.socket.connect(wsp + self.hostname + "/socket.io/1",
-                    query="Currency=" + self.currency)
+                    query="Currency=" + self.curr_quote)
 
                 self._time_last_received = time.time()
                 self.connected = True
@@ -1124,7 +1136,10 @@ class Gox(BaseObject):
         self.count_submitted = 0  # number of submitted orders not yet acked
 
         self.config = config
-        self.currency = config.get("gox", "currency", "USD")
+        self.curr_base = config.get_string("gox", "base_currency")
+        self.curr_quote = config.get_string("gox", "quote_currency")
+
+        self.currency = self.curr_quote # deprecated, use curr_quote instead
 
         Signal.signal_error.connect(self.signal_debug)
 
@@ -1143,9 +1158,9 @@ class Gox(BaseObject):
         if "websocket" in FORCE_PROTOCOL:
             use_websocket = True
         if use_websocket:
-            self.client = WebsocketClient(self.currency, secret, config)
+            self.client = WebsocketClient(self.curr_base, self.curr_quote, secret, config)
         else:
-            self.client = SocketIOClient(self.currency, secret, config)
+            self.client = SocketIOClient(self.curr_base, self.curr_quote, secret, config)
 
         self.client.signal_debug.connect(self.signal_debug)
         self.client.signal_recv.connect(self.slot_recv)
@@ -1159,7 +1174,7 @@ class Gox(BaseObject):
 
     def start(self):
         """connect to MtGox and start receiving events."""
-        self.debug("starting gox streaming API, currency=" + self.currency)
+        self.debug("starting gox streaming API, currency=" + self.curr_quote)
         self.client.start()
 
     def stop(self):
@@ -1256,8 +1271,8 @@ class Gox(BaseObject):
             self.debug("### got own order list")
             self.count_submitted = 0
             self.orderbook.init_own(result)
-            self.debug("### have %d own orders for BTC/%s" %
-                (len(self.orderbook.owns), self.currency))
+            self.debug("### have %d own orders for %s/%s" %
+                (len(self.orderbook.owns), self.curr_base, self.curr_quote))
 
         elif reqid == "info":
             self.debug("### got account info")
@@ -1319,21 +1334,25 @@ class Gox(BaseObject):
     def _on_op_private_ticker(self, msg):
         """handle incoming ticker message (op=private, private=ticker)"""
         msg = msg["ticker"]
-        if msg["sell"]["currency"] != self.currency:
+        if msg["sell"]["currency"] != self.curr_quote:
+            return
+        if msg["item"] != self.curr_base:
             return
         bid = int(msg["buy"]["value_int"])
         ask = int(msg["sell"]["value_int"])
 
         self.debug(" tick: %s %s" % (
-            int2str(bid, self.currency),
-            int2str(ask, self.currency)
+            int2str(bid, self.curr_quote),
+            int2str(ask, self.curr_quote)
         ))
         self.signal_ticker(self, (bid, ask))
 
     def _on_op_private_depth(self, msg):
         """handle incoming depth message (op=private, private=depth)"""
         msg = msg["depth"]
-        if msg["currency"] != self.currency:
+        if msg["currency"] != self.curr_quote:
+            return
+        if msg["item"] != self.curr_base:
             return
         typ = msg["type_str"]
         price = int(msg["price_int"])
@@ -1342,15 +1361,17 @@ class Gox(BaseObject):
 
         self.debug("depth: %s: %s @ %s total vol: %s" % (
             typ,
-            int2str(volume, "BTC"),
-            int2str(price, self.currency),
-            int2str(total_volume, "BTC")
+            int2str(volume, self.curr_base),
+            int2str(price, self.curr_quote),
+            int2str(total_volume, self.curr_base)
         ))
         self.signal_depth(self, (typ, price, volume, total_volume))
 
     def _on_op_private_trade(self, msg):
         """handle incoming trade mesage (op=private, private=trade)"""
-        if msg["trade"]["price_currency"] != self.currency:
+        if msg["trade"]["price_currency"] != self.curr_quote:
+            return
+        if msg["trade"]["item"] != self.curr_base:
             return
         if msg["channel"] == "dbf1dee9-4f2e-4a08-8cb7-748919a71b21":
             own = False
@@ -1364,14 +1385,14 @@ class Gox(BaseObject):
         if own:
             self.debug("trade: %s: %s @ %s (own order filled)" % (
                 typ,
-                int2str(volume, "BTC"),
-                int2str(price, self.currency)
+                int2str(volume, self.curr_base),
+                int2str(price, self.curr_quote)
             ))
         else:
             self.debug("trade: %s: %s @ %s" % (
                 typ,
-                int2str(volume, "BTC"),
-                int2str(price, self.currency)
+                int2str(volume, self.curr_base),
+                int2str(price, self.curr_quote)
             ))
 
         self.signal_trade(self, (date, price, volume, typ, own))
@@ -1381,7 +1402,7 @@ class Gox(BaseObject):
         order = msg["user_order"]
         oid = order["oid"]
         if "price" in order:
-            if order["currency"] == self.currency:
+            if order["currency"] == self.curr_quote and order["item"] == self.curr_base:
                 price = int(order["price"]["value_int"])
                 volume = int(order["amount"]["value_int"])
                 typ = order["type"]
@@ -1600,7 +1621,7 @@ class OrderBook(BaseObject):
                     order = self.owns[i]
                     self.debug(
                         "### removing order %s " % oid,
-                        "price:", int2str(order.price, self.gox.currency),
+                        "price:", int2str(order.price, self.gox.curr_quote),
                         "type:", order.typ)
 
                     # remove it from owns...
@@ -1620,7 +1641,7 @@ class OrderBook(BaseObject):
                     found = True
                     self.debug(
                         "### updating order %s " % oid,
-                        "volume:", int2str(volume, "BTC"),
+                        "volume:", int2str(volume, self.gox.curr_base),
                         "status:", status)
                     order.volume = volume
                     order.status = status
@@ -1629,7 +1650,7 @@ class OrderBook(BaseObject):
             if not found:
                 self.debug(
                     "### adding order %s " % oid,
-                    "volume:", int2str(volume, "BTC"),
+                    "volume:", int2str(volume, self.gox.curr_base),
                     "status:", status)
                 self.owns.append(Order(price, volume, typ, oid, status))
 
@@ -1668,8 +1689,10 @@ class OrderBook(BaseObject):
             self._update_level_own_volume(
                 order.typ, order.price, self.get_own_volume_at(order.price, order.typ))
 
-        self.bid = self.bids[0].price
-        self.ask = self.asks[0].price
+        if len(self.bids):
+            self.bid = self.bids[0].price
+        if len(self.asks):
+            self.ask = self.asks[0].price
         self.signal_changed(self, None)
 
     def _repair_crossed_bids(self, bid):
@@ -1714,12 +1737,13 @@ class OrderBook(BaseObject):
         self._update_total_bid(voldiff, price)
 
     def _update_total_ask(self, volume):
-        """update total BTC on the ask side"""
-        self.total_ask += int2float(volume, "BTC")
+        """update total volume of base currency on the ask side"""
+        self.total_ask += int2float(volume, self.gox.curr_base)
 
     def _update_total_bid(self, volume, price):
-        """update total fiat on the bid side"""
-        self.total_bid += int2float(volume, "BTC") * int2float(price, self.gox.currency)
+        """update total volume of quote currency on the bid side"""
+        self.total_bid += \
+            int2float(volume, self.gox.curr_base) * int2float(price, self.gox.curr_quote)
 
     def _update_level_own_volume(self, typ, price, own_volume):
         """update the own_volume cache in the Level object at price"""
@@ -1779,7 +1803,8 @@ class OrderBook(BaseObject):
 
         if own_orders:
             for order in own_orders:
-                if order["currency"] == self.gox.currency:
+                if order["currency"] == self.gox.curr_quote \
+                and order["item"] == self.gox.curr_base:
                     self._add_own(Order(
                         int(order["price"]["value_int"]),
                         int(order["amount"]["value_int"]),
