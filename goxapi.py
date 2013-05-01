@@ -1157,6 +1157,12 @@ class Gox(BaseObject):
 
         self.currency = self.curr_quote # deprecated, use curr_quote instead
 
+        if self.curr_quote == "JPY":
+            self.mult_quote = 1e3
+        else:
+            self.mult_quote = 1e5
+        self.mult_base = 1e8
+
         Signal.signal_error.connect(self.signal_debug)
 
         timeframe = 60 * config.get_int("gox", "history_timeframe")
@@ -1231,6 +1237,22 @@ class Gox(BaseObject):
             if typ == None or typ == order.typ:
                 if order.oid != "":
                     self.cancel(order.oid)
+
+    def base2int(self, float_number):
+        """convert base currency float into mtgox integer"""
+        return int(round(float_number * self.mult_base))
+
+    def base2float(self, int_number):
+        """convert base currency mtgox integer into float"""
+        return float(int_number) / self.mult_base
+
+    def quote2int(self, float_number):
+        """convert quote currency float into mtgox integer"""
+        return int(round(float_number * self.mult_quote))
+
+    def quote2float(self, int_number):
+        """convert quote currency mtgox integer into float"""
+        return float(int_number) / self.mult_quote
 
     def slot_recv(self, dummy_sender, data):
         """Slot for signal_recv, handle new incoming JSON message. Decode the
