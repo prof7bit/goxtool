@@ -17,7 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913,W0703
+# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913,R0915,W0703
 
 import sys
 PY_VERSION = sys.version_info
@@ -64,6 +64,7 @@ HTTP_HOST = "data.mtgox.com"
 
 USER_AGENT = "goxtool.py"
 
+# deprecated, use gox.quote2str() and gox.base2str() instead
 def int2str(value_int, currency):
     """return currency integer formatted as a string"""
     if currency in "BTC LTC NMC":
@@ -73,6 +74,7 @@ def int2str(value_int, currency):
     else:
         return ("%12.5f" % (value_int / 100000.0))
 
+# deprecated, use gox.quote2float() and gox.base2float() instead
 def int2float(value_int, currency):
     """convert integer to float, determine the factor by currency name"""
     if currency in "BTC LTC NMC":
@@ -82,6 +84,7 @@ def int2float(value_int, currency):
     else:
         return value_int / 100000.0
 
+# deprecated, use gox.quote2int() and gox.base2int() instead
 def float2int(value_float, currency):
     """convert float value to integer, determine the factor by currency name"""
     if currency in "BTC LTC NMC":
@@ -1157,11 +1160,15 @@ class Gox(BaseObject):
 
         self.currency = self.curr_quote # deprecated, use curr_quote instead
 
+        # these are needed for conversion from/to intereger, float, string
         if self.curr_quote == "JPY":
             self.mult_quote = 1e3
+            self.format_quote = "%12.3f"
         else:
             self.mult_quote = 1e5
+            self.format_quote = "%12.5f"
         self.mult_base = 1e8
+        self.format_base = "%16.8f"
 
         Signal.signal_error.connect(self.signal_debug)
 
@@ -1246,6 +1253,10 @@ class Gox(BaseObject):
         """convert base currency mtgox integer into float"""
         return float(int_number) / self.mult_base
 
+    def base2str(self, int_number):
+        """convert base currency mtgox integer into formatted string"""
+        return self.format_base % (float(int_number) / self.mult_base)
+
     def quote2int(self, float_number):
         """convert quote currency float into mtgox integer"""
         return int(round(float_number * self.mult_quote))
@@ -1253,6 +1264,10 @@ class Gox(BaseObject):
     def quote2float(self, int_number):
         """convert quote currency mtgox integer into float"""
         return float(int_number) / self.mult_quote
+
+    def quote2str(self, int_number):
+        """convert quote currency mtgox integer into formatted string"""
+        return self.format_quote % (float(int_number) / self.mult_quote)
 
     def slot_recv(self, dummy_sender, data):
         """Slot for signal_recv, handle new incoming JSON message. Decode the
@@ -1381,8 +1396,8 @@ class Gox(BaseObject):
         ask = int(msg["sell"]["value_int"])
 
         self.debug(" tick: %s %s" % (
-            int2str(bid, self.curr_quote),
-            int2str(ask, self.curr_quote)
+            self.quote2str(bid),
+            self.quote2str(ask)
         ))
         self.signal_ticker(self, (bid, ask))
 
@@ -1400,9 +1415,9 @@ class Gox(BaseObject):
 
         self.debug("depth: %s: %s @ %s total vol: %s" % (
             typ,
-            int2str(volume, self.curr_base),
-            int2str(price, self.curr_quote),
-            int2str(total_volume, self.curr_base)
+            self.base2str(volume),
+            self.quote2str(price),
+            self.base2str(total_volume)
         ))
         self.signal_depth(self, (typ, price, volume, total_volume))
 
@@ -1424,14 +1439,14 @@ class Gox(BaseObject):
         if own:
             self.debug("trade: %s: %s @ %s (own order filled)" % (
                 typ,
-                int2str(volume, self.curr_base),
-                int2str(price, self.curr_quote)
+                self.base2str(volume),
+                self.quote2str(price)
             ))
         else:
             self.debug("trade: %s: %s @ %s" % (
                 typ,
-                int2str(volume, self.curr_base),
-                int2str(price, self.curr_quote)
+                self.base2str(volume),
+                self.quote2str(price)
             ))
 
         self.signal_trade(self, (date, price, volume, typ, own))
@@ -1660,7 +1675,7 @@ class OrderBook(BaseObject):
                     order = self.owns[i]
                     self.debug(
                         "### removing order %s " % oid,
-                        "price:", int2str(order.price, self.gox.curr_quote),
+                        "price:", self.gox.quote2str(order.price),
                         "type:", order.typ)
 
                     # remove it from owns...
@@ -1680,7 +1695,7 @@ class OrderBook(BaseObject):
                     found = True
                     self.debug(
                         "### updating order %s " % oid,
-                        "volume:", int2str(volume, self.gox.curr_base),
+                        "volume:", self.gox.base2str(volume),
                         "status:", status)
                     order.volume = volume
                     order.status = status
@@ -1689,7 +1704,7 @@ class OrderBook(BaseObject):
             if not found:
                 self.debug(
                     "### adding order %s " % oid,
-                    "volume:", int2str(volume, self.gox.curr_base),
+                    "volume:", self.gox.base2str(volume),
                     "status:", status)
                 self.owns.append(Order(price, volume, typ, oid, status))
 

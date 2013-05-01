@@ -276,10 +276,10 @@ class WinOrderBook(Win):
 
         def paint_row(pos, price, vol, ownvol, color):
             """paint a row in the orderbook (bid or ask)"""
-            self.addstr(pos, 0,  goxapi.int2str(price, book.gox.curr_quote), color)
-            self.addstr(pos, 12, goxapi.int2str(vol, book.gox.curr_base), col_vol)
+            self.addstr(pos, 0,  book.gox.quote2str(price), color)
+            self.addstr(pos, 12, book.gox.base2str(vol), col_vol)
             if ownvol:
-                self.addstr(pos, 28, goxapi.int2str(ownvol, book.gox.curr_base), col_own)
+                self.addstr(pos, 28, book.gox.base2str(ownvol), col_own)
 
         self.win.bkgd(" ",  COLOR_PAIR["book_text"])
         self.win.erase()
@@ -291,7 +291,7 @@ class WinOrderBook(Win):
 
         sum_total = self.gox.config.get_bool("goxtool", "orderbook_sum_total")
         group = self.gox.config.get_float("goxtool", "orderbook_group")
-        group = goxapi.float2int(group, self.gox.curr_quote)
+        group = self.gox.quote2int(group)
         if group == 0:
             group = 1
 
@@ -370,10 +370,10 @@ class WinOrderBook(Win):
         if self.gox.config.get_bool("goxtool", "set_xterm_title"):
             last_candle = self.gox.history.last_candle()
             if last_candle:
-                title = goxapi.int2str(last_candle.cls, self.gox.curr_quote).strip()
+                title = self.gox.quote2str(last_candle.cls).strip()
                 title += " - goxtool -"
-                title += " bid:" + goxapi.int2str(book.bid, self.gox.curr_quote).strip()
-                title += " ask:" + goxapi.int2str(book.ask, self.gox.curr_quote).strip()
+                title += " bid:" + self.gox.quote2str(book.bid).strip()
+                title += " ask:" + self.gox.quote2str(book.ask).strip()
                 curses.putp("\033]0;%s\007" % title)
 
 
@@ -471,7 +471,7 @@ class WinChart(Win):
 
         def paint_depth(pos, price, vol, own, col_price):
             """paint one row of the depth chart"""
-            pricestr = FORMAT_STRING % goxapi.int2float(price, self.gox.curr_quote)
+            pricestr = FORMAT_STRING % self.gox.quote2float(price)
             self.addstr(pos, 0, pricestr, col_price)
             length = int(vol * mult_x)
             # pylint: disable=E1101
@@ -495,7 +495,7 @@ class WinChart(Win):
         group = self.gox.config.get_float("goxtool", "depth_chart_group")
         if group == 0:
             group = 1
-        group = goxapi.float2int(group, self.gox.curr_quote)
+        group = self.gox.quote2int(group)
 
         bin_asks = []
         bin_bids = []
@@ -647,7 +647,7 @@ class WinChart(Win):
                 if posy < self.height - 1:
                     self.addstr(
                         posy, posx,
-                        goxapi.int2str(labelprice, self.gox.curr_quote),
+                        self.gox.quote2str(labelprice),
                         COLOR_PAIR["chart_text"]
                     )
                 labelprice += step
@@ -878,8 +878,8 @@ class DlgCancelOrders(DlgListItems):
 
         self.addstr(posy, 2, marker, attr)
         self.addstr(posy, 5, order.typ, attr)
-        self.addstr(posy, 9, goxapi.int2str(order.price, self.gox.curr_quote), attr)
-        self.addstr(posy, 22, goxapi.int2str(order.volume, self.gox.curr_base), attr)
+        self.addstr(posy, 9, self.gox.quote2str(order.price), attr)
+        self.addstr(posy, 22, self.gox.base2str(order.volume), attr)
 
     def _do_cancel(self):
         """cancel all selected orders (or the order under cursor if empty)"""
@@ -1058,8 +1058,8 @@ class DlgNewOrderBid(DlgNewOrder):
             "New buy order")
 
     def do_submit(self, price, volume):
-        price = goxapi.float2int(price, self.gox.curr_quote)
-        volume = goxapi.float2int(volume, self.gox.curr_base)
+        price = self.gox.quote2int(price)
+        volume = self.gox.base2int(volume)
         self.gox.buy(price, volume)
 
 
@@ -1071,8 +1071,8 @@ class DlgNewOrderAsk(DlgNewOrder):
             "New sell order")
 
     def do_submit(self, price, volume):
-        price = goxapi.float2int(price, self.gox.curr_quote)
-        volume = goxapi.float2int(volume, self.gox.curr_base)
+        price = self.gox.quote2int(price)
+        volume = self.gox.base2int(volume)
         self.gox.sell(price, volume)
 
 
