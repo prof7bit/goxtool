@@ -748,12 +748,18 @@ class BaseClient(BaseObject):
         raise NotImplementedError()
 
     def channel_subscribe(self):
-        """subscribe to the needed channels and alo initiate the
-        download of the initial full market depth"""
+        """subscribe to needed channnels and download initial data (orders,
+        account info, depth, history, etc. Some of these might be redundant but
+        at the time I wrote this code the socketio server seemed to have a bug,
+        not being able to subscribe via the GET parameters, so I send all
+        needed subscription requests here again, just to be on the safe side."""
 
-        #self.send(json.dumps({"op":"mtgox.subscribe", "type":"depth"}))
-        #self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
-        #self.send(json.dumps({"op":"mtgox.subscribe", "type":"ticker"}))
+        symb = "%s%s" % (self.curr_base, self.curr_quote)
+        self.send(json.dumps({"op":"mtgox.subscribe", "channel":"depth.%s" % symb}))
+        self.send(json.dumps({"op":"mtgox.subscribe", "channel":"ticker.%s" % symb}))
+
+        # trades and lag are the same channels for all currencies
+        self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
         if self.use_http():
@@ -934,9 +940,13 @@ class WebsocketClient(BaseClient):
         ws_headers = ["User-Agent: %s" % USER_AGENT]
         while not self._terminating:  #loop 0 (connect, reconnect)
             try:
-                ws_url = wsp + self.hostname \
-                    + "/mtgox?Currency=" + self.curr_quote
-
+                # channels separated by "/", wildcards allowed. Available
+                # channels see here: https://mtgox.com/api/2/stream/list_public
+                # example: ws://websocket.mtgox.com/?Channel=depth.LTCEUR/ticker.LTCEUR
+                # the trades and lag channel will be subscribed after connect
+                sym = "%s%s" % (self.curr_base, self.curr_quote)
+                ws_url = "%s%s?Channel=depth.%s/ticker.%s" % \
+                    (wsp, self.hostname, sym, sym)
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
                 self.socket = websocket.WebSocket()
@@ -1028,8 +1038,9 @@ class SocketIO(websocket.WebSocket):
         ws_id = result[1].split(":")[0]
         resource += "/websocket/" + ws_id
         if "query" in options:
-            resource += "?" + options["query"]
+            resource = "%s?%s" % (resource, options["query"])
 
+        # now continue with the normal websocket GET and upgrade request
         self._handshake(hostname, port, resource, **options)
 
 
@@ -1051,11 +1062,16 @@ class SocketIOClient(BaseClient):
         wsp = {True: "wss://", False: "ws://"}[use_ssl]
         while not self._terminating: #loop 0 (connect, reconnect)
             try:
-                self.debug("trying Socket.IO: %s ..." % self.hostname)
+                url = "%s%s/socket.io/1" % (wsp, self.hostname)
 
+                # subscribing depth and ticker through the querystring,
+                # the trade and lag will be subscribed later after connect
+                sym = "%s%s" % (self.curr_base, self.curr_quote)
+                querystring = "Channel=depth.%s/ticker.%s" % (sym, sym)
+
+                self.debug("trying Socket.IO: %s?%s ..." % (url, querystring))
                 self.socket = SocketIO()
-                self.socket.connect(wsp + self.hostname + "/socket.io/1",
-                    query="Currency=" + self.curr_quote)
+                self.socket.connect(url, query=querystring)
 
                 self._time_last_received = time.time()
                 self.connected = True
@@ -1174,7 +1190,8 @@ class Gox(BaseObject):
 
     def start(self):
         """connect to MtGox and start receiving events."""
-        self.debug("starting gox streaming API, currency=" + self.curr_quote)
+        self.debug("starting gox streaming API, trading %s%s" %
+            (self.curr_base, self.curr_quote))
         self.client.start()
 
     def stop(self):
