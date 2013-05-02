@@ -724,10 +724,11 @@ class WinStatus(Win):
         else:
             str_ratio = "-"
 
-        line2 = "total bid: " + str_fiat + " " + cquote + " | "
-        line2 += "total ask: " +str_btc + " " + cbase + " | "
-        line2 += "ratio: " + str_ratio + " " + cquote + "/" + cbase + " | "
-        line2 += "lag: " + self.order_lag_txt
+        line2 = "sum_bid: %s %s | " % (str_fiat, cquote)
+        line2 += "sum_ask: %s %s | " % (str_btc, cbase)
+        line2 += "ratio: %s %s/%s | " % (str_ratio, cquote, cbase)
+        line2 += "o-lag: %s | " % self.order_lag_txt
+        line2 += "s-lag: %.3f s" % (self.gox.socket_lag / 1e6)
         self.addstr(0, 0, line1, COLOR_PAIR["status_text"])
         self.addstr(1, 0, line2, COLOR_PAIR["status_text"])
 

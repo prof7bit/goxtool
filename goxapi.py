@@ -1150,7 +1150,8 @@ class Gox(BaseObject):
 
         self._idkey      = ""
         self.wallet = {}
-        self.order_lag = 0
+        self.order_lag = 0  # microseconds
+        self.socket_lag = 0 # microseconds
         self.last_tid = 0
         self.count_submitted = 0  # number of submitted orders not yet acked
 
@@ -1411,13 +1412,17 @@ class Gox(BaseObject):
         typ = msg["type_str"]
         price = int(msg["price_int"])
         volume = int(msg["volume_int"])
+        timestamp = int(msg["now"])
         total_volume = int(msg["total_volume_int"])
 
-        self.debug("depth: %s: %s @ %s total vol: %s" % (
+        self.socket_lag = time.time() * 1e6 - timestamp
+
+        self.debug("depth: %s: %s @ %s total vol: %s age: %0.2f seconds" % (
             typ,
             self.base2str(volume),
             self.quote2str(price),
-            self.base2str(total_volume)
+            self.base2str(total_volume),
+            self.socket_lag / 1e6
         ))
         self.signal_depth(self, (typ, price, volume, total_volume))
 
