@@ -1415,14 +1415,15 @@ class Gox(BaseObject):
         timestamp = int(msg["now"])
         total_volume = int(msg["total_volume_int"])
 
-        self.socket_lag = time.time() * 1e6 - timestamp
+        delay = time.time() * 1e6 - timestamp
+        self.socket_lag = (self.socket_lag * 5 + delay) / 6
 
-        self.debug("depth: %s: %s @ %s total vol: %s age: %0.2f seconds" % (
+        self.debug("depth: %s: %s @ %s total vol: %s (age: %0.2f s)" % (
             typ,
             self.base2str(volume),
             self.quote2str(price),
             self.base2str(total_volume),
-            self.socket_lag / 1e6
+            delay / 1e6
         ))
         self.signal_depth(self, (typ, price, volume, total_volume))
 
