@@ -1248,29 +1248,33 @@ class Gox(BaseObject):
                 if order.oid != "":
                     self.cancel(order.oid)
 
-    def base2int(self, float_number):
-        """convert base currency float into mtgox integer"""
-        return int(round(float_number * self.mult_base))
-
     def base2float(self, int_number):
-        """convert base currency mtgox integer into float"""
+        """convert base currency values from mtgox integer to float. Base
+        currency are the coins you are trading (BTC, LTC, etc). Use this method
+        to convert order volumes (amount of coins) from int to float."""
         return float(int_number) / self.mult_base
 
     def base2str(self, int_number):
-        """convert base currency mtgox integer into formatted string"""
+        """convert base currency values from mtgox integer to formatted string"""
         return self.format_base % (float(int_number) / self.mult_base)
 
-    def quote2int(self, float_number):
-        """convert quote currency float into mtgox integer"""
-        return int(round(float_number * self.mult_quote))
+    def base2int(self, float_number):
+        """convert base currency values from float to mtgox integer"""
+        return int(round(float_number * self.mult_base))
 
     def quote2float(self, int_number):
-        """convert quote currency mtgox integer into float"""
+        """convert quote currency values from mtgox integer to float. Quote
+        currency is the currency used to quote prices (USD, EUR, etc), use this
+        method to convert the prices of orders, bid or ask from int to float."""
         return float(int_number) / self.mult_quote
 
     def quote2str(self, int_number):
-        """convert quote currency mtgox integer into formatted string"""
+        """convert quote currency values from mtgox integer to formatted string"""
         return self.format_quote % (float(int_number) / self.mult_quote)
+
+    def quote2int(self, float_number):
+        """convert quote currency values from float to mtgox integer"""
+        return int(round(float_number * self.mult_quote))
 
     def slot_recv(self, dummy_sender, data):
         """Slot for signal_recv, handle new incoming JSON message. Decode the

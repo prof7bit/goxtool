@@ -704,7 +704,7 @@ class WinStatus(Win):
         self.sort_currency_list_if_changed()
         self.win.bkgd(" ", COLOR_PAIR["status_text"])
         self.win.erase()
-        line1 = "Currency: " + cquote + " | "
+        line1 = "Market: %s%s | " % (cbase, cquote)
         line1 += "Account: "
         if len(self.sorted_currency_list):
             for currency in self.sorted_currency_list:
@@ -727,8 +727,8 @@ class WinStatus(Win):
         line2 = "sum_bid: %s %s | " % (str_fiat, cquote)
         line2 += "sum_ask: %s %s | " % (str_btc, cbase)
         line2 += "ratio: %s %s/%s | " % (str_ratio, cquote, cbase)
-        line2 += "o-lag: %s | " % self.order_lag_txt
-        line2 += "s-lag: %.3f s" % (self.gox.socket_lag / 1e6)
+        line2 += "o_lag: %s | " % self.order_lag_txt
+        line2 += "s_lag: %.3f s" % (self.gox.socket_lag / 1e6)
         self.addstr(0, 0, line1, COLOR_PAIR["status_text"])
         self.addstr(1, 0, line2, COLOR_PAIR["status_text"])
 
