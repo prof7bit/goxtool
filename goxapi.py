@@ -1143,6 +1143,8 @@ class Gox(BaseObject):
         self.signal_userorder       = Signal()
         self.signal_orderlag        = Signal()
 
+        self.strategies = weakref.WeakValueDictionary()
+
         # the following are not fired by gox itself but by the
         # application controlling it to pass some of its events
         self.signal_keypress        = Signal()

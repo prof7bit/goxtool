@@ -1159,6 +1159,8 @@ class StrategyManager():
                     reload(strategy_module)
                     strategy_object = strategy_module.Strategy(self.gox)
                     self.strategy_object_list.append(strategy_object)
+                    if hasattr(strategy_object, "name"):
+                        self.gox.strategies[strategy_object.name] = strategy_object
 
                 except Exception:
                     self.gox.debug("### error while loading strategy %s.py, traceback follows:" % name)
