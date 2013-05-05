@@ -31,6 +31,7 @@ import goxapi
 import logging
 import locale
 import math
+import os
 import sys
 import time
 import traceback
@@ -1399,7 +1400,7 @@ def main():
             else:
                 print
                 print "*******************************************************"
-                print "*  Please donate: 1D7ELjGofBiRUJNwK55DVC3XWYjfN77CA3  *"
+                print "*  Please donate: 1C8aDabADaYvTKvCAG1htqYcEgpAhkeYoW  *"
                 print "*******************************************************"
 
 if __name__ == "__main__":
