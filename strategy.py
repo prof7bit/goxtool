@@ -40,8 +40,11 @@ class Strategy(goxapi.BaseObject):
         pass
 
     def slot_keypress(self, gox, (key)):
-        """a key in has been pressed (only a..z without "q" and "l")"""
-        self.debug("someone pressed the %s key" % chr(key))
+        """a key in has been pressed (only a..z without "q" and "l")
+        The argument key contains the ascii code. To react to a certain
+        key use something like if key == ord('a')
+        """
+        pass
 
     def slot_tick(self, gox, (bid, ask)):
         """a tick message has been received from the streaming API"""
