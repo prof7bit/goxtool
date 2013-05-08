@@ -649,6 +649,7 @@ class BaseClient(BaseObject):
         self._terminating = False
         self.connected = False
         self._time_last_received = 0
+        self._time_last_subscribed = 0
         self.history_last_candle = None
 
     def start(self):
@@ -750,7 +751,7 @@ class BaseClient(BaseObject):
         client (websocket or socketio) will implement its own"""
         raise NotImplementedError()
 
-    def channel_subscribe(self):
+    def channel_subscribe(self, download_market_data=True):
         """subscribe to needed channnels and download initial data (orders,
         account info, depth, history, etc. Some of these might be redundant but
         at the time I wrote this code the socketio server seemed to have a bug,
@@ -774,13 +775,16 @@ class BaseClient(BaseObject):
             self.send_signed_call("private/orders", {}, "orders")
             self.send_signed_call("private/info", {}, "info")
 
-        if self.config.get_bool("gox", "load_fulldepth"):
-            if not FORCE_NO_FULLDEPTH:
-                self.request_fulldepth()
+        if download_market_data:
+            if self.config.get_bool("gox", "load_fulldepth"):
+                if not FORCE_NO_FULLDEPTH:
+                    self.request_fulldepth()
 
-        if self.config.get_bool("gox", "load_history"):
-            if not FORCE_NO_HISTORY:
-                self.request_history()
+            if self.config.get_bool("gox", "load_history"):
+                if not FORCE_NO_HISTORY:
+                    self.request_history()
+
+        self._time_last_subscribed = time.time()
 
     def _http_thread_func(self):
         """send queued http requests to the http API (only used when
@@ -921,6 +925,16 @@ class BaseClient(BaseObject):
                 self.debug("did not receive anything for a long time, disconnecting.")
                 self.socket.close()
                 self.connected = False
+            if time.time() - self._time_last_subscribed > 3600:
+                # sometimes after running for a few hours it
+                # will lose some of the subscriptons for no
+                # obvious reason. I've seen it losing the trades
+                # and the lag channel channel already, and maybe
+                # even others. Simply subscribing again completely
+                # fixes this condition. For this reason we renew
+                # all channel subscriptions once every hour.
+                self.debug("### refreshing channel subscriptions")
+                self.channel_subscribe(False)
 
 
 class WebsocketClient(BaseClient):
