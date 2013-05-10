@@ -810,6 +810,7 @@ class BaseClient(BaseObject):
                             "op": "remark",
                             "success": False,
                             "message": answer["error"],
+                            "token": answer["token"],
                             "id": reqid
                         }
                         self.signal_recv(self, (json.dumps(fake_remark_msg)))
