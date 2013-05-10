@@ -1299,7 +1299,7 @@ def main():
                     toggle_orderbook_sum(gox)
 
                 # lowercase keys go to the strategy module
-                elif key > ord("a") and key < ord("z"):
+                elif key >= ord("a") and key <= ord("z"):
                     gox.signal_keypress(gox, (key))
                 else:
                     gox.debug("key pressed: key=%i" % key)
