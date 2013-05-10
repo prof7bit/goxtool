@@ -1088,8 +1088,13 @@ class LogWriter():
     """connects to gox.signal_debug and logs it all to the logfile"""
     def __init__(self, gox):
         self.gox = gox
+        if self.gox.config.get_bool("goxtool", "dont_truncate_logfile"):
+            logfilemode = 'a'
+        else:
+            logfilemode = 'w'
+
         logging.basicConfig(filename='goxtool.log'
-                           ,filemode='w'
+                           ,filemode=logfilemode
                            ,format='%(asctime)s:%(levelname)s:%(message)s'
                            ,level=logging.DEBUG
                            )

@@ -160,6 +160,7 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "secret_key", ""]
                 ,["gox", "secret_secret", ""]
                 ,["goxtool", "set_xterm_title", "True"]
+                ,["goxtool", "dont_truncate_logfile", "False"]
                 ,["goxtool", "orderbook_group", "0"]
                 ,["goxtool", "orderbook_sum_total", "False"]
                 ,["goxtool", "display_right", "history_chart"]
