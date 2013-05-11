@@ -1273,7 +1273,7 @@ class Gox(BaseObject):
                     self.cancel(order.oid)
 
     def cancel_by_type(self, typ=None):
-        """cancel all orders of type (or all orders if type=None)"""
+        """cancel all orders of type (or all orders if typ=None)"""
         for i in reversed(range(len(self.orderbook.owns))):
             order = self.orderbook.owns[i]
             if typ == None or typ == order.typ:
