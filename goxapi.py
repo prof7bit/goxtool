@@ -741,9 +741,13 @@ class BaseClient(BaseObject):
             self.debug("requesting history")
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
-            json_hist = http_request(proto + "://" +  HTTP_HOST \
-                + "/api/2/" + self.curr_base + self.curr_quote \
-                + "/money/trades" + querystring)
+            json_hist = http_request("%s://%s/api/2/%s%s/money/trades%s" % (
+                proto,
+                HTTP_HOST,
+                self.curr_base,
+                self.curr_quote,
+                querystring
+            ))
             history = json.loads(json_hist)
             if history["result"] == "success":
                 self.signal_fullhistory(self, history["data"])
