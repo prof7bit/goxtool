@@ -710,9 +710,12 @@ class BaseClient(BaseObject):
             self.debug("requesting initial full depth")
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
-            fulldepth = http_request(proto + "://" +  HTTP_HOST \
-                + "/api/2/" + self.curr_base + self.curr_quote \
-                + "/money/depth/full")
+            fulldepth = http_request("%s://%s/api/2/%s%s/money/depth/full" % (
+                proto,
+                HTTP_HOST,
+                self.curr_base,
+                self.curr_quote
+            ))
             self.signal_fulldepth(self, (json.loads(fulldepth)))
 
         start_thread(fulldepth_thread)
