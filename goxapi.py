@@ -868,8 +868,11 @@ class BaseClient(BaseObject):
 
         use_ssl = self.config.get_bool("gox", "use_ssl")
         proto = {True: "https", False: "http"}[use_ssl]
-        url = proto + "://" + HTTP_HOST + "/api/2/" + api_endpoint
-
+        url = "%s://%s/api/2/%s" % (
+            proto,
+            HTTP_HOST,
+            api_endpoint
+        )
         self.debug("### (%s) calling %s" % (proto, url))
         return json.loads(http_request(url, post, headers))
 
@@ -1068,7 +1071,7 @@ class SocketIO(websocket.WebSocket):
             raise IOError("invalid response from socket.io server")
 
         ws_id = result[1].split(":")[0]
-        resource += "/websocket/" + ws_id
+        resource = "%s/websocket/%s" % (resource, ws_id)
         if "query" in options:
             resource = "%s?%s" % (resource, options["query"])
 
