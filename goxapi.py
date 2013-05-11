@@ -731,7 +731,7 @@ class BaseClient(BaseObject):
             # 1309108565, 1309108565842636 <-- first big transaction ID
 
             if since:
-                querystring = "?since=" + str(since * 1000000)
+                querystring = "?since=%i" % (since * 1000000)
             else:
                 querystring = ""
 
@@ -793,28 +793,31 @@ class BaseClient(BaseObject):
         while not self._terminating:
             # pop queued request from the queue and process it
             (api_endpoint, params, reqid) = self.http_requests.get(True)
+            translated = None
             try:
                 answer = self.http_signed_call(api_endpoint, params)
                 if answer["result"] == "success":
                     # the following will reformat the answer in such a way
                     # that we can pass it directly to signal_recv()
                     # as if it had come directly from the websocket
-                    ret = {"op": "result", "id": reqid, "result": answer["data"]}
-                    self.signal_recv(self, (json.dumps(ret)))
+                    translated = {
+                        "op": "result",
+                        "result": answer["data"],
+                        "id": reqid
+                    }
                 else:
                     if "error" in answer:
                         # these are errors like "Order amount is too low"
                         # or "Order not found" and the like, we send them
                         # to signal_recv() as if they had come from the
                         # streaming API beause Gox() can handle these errors.
-                        fake_remark_msg = {
+                        translated = {
                             "op": "remark",
                             "success": False,
                             "message": answer["error"],
                             "token": answer["token"],
                             "id": reqid
                         }
-                        self.signal_recv(self, (json.dumps(fake_remark_msg)))
                     else:
                         self.debug("### unexpected http result:", answer, reqid)
 
@@ -824,6 +827,9 @@ class BaseClient(BaseObject):
                 # reply or something else. Log the error and don't retry
                 self.debug("### exception in _http_thread_func:",
                     exc, api_endpoint, params, reqid)
+
+            if translated:
+                self.signal_recv(self, (json.dumps(translated)))
 
             self.http_requests.task_done()
 
