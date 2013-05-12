@@ -1630,6 +1630,7 @@ class OrderBook(BaseObject):
         self.gox = gox
 
         self.signal_changed = Signal()
+        self.signal_fulldepth_processed = Signal()
         self.signal_owns_changed = Signal()
 
         gox.signal_ticker.connect(self.slot_ticker)
@@ -1791,6 +1792,8 @@ class OrderBook(BaseObject):
             self.bid = self.bids[0].price
         if len(self.asks):
             self.ask = self.asks[0].price
+
+        self.signal_fulldepth_processed(self, None)
         self.signal_changed(self, None)
 
     def _repair_crossed_bids(self, bid):
