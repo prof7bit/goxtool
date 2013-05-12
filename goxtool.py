@@ -76,6 +76,7 @@ INI_DEFAULTS =  [["goxtool", "set_xterm_title", "True"]
                 ,["goxtool", "orderbook_sum_total", "False"]
                 ,["goxtool", "display_right", "history_chart"]
                 ,["goxtool", "depth_chart_group", "1"]
+                ,["goxtool", "depth_chart_sum_total", "True"]
                 ,["goxtool", "show_ticker", "True"]
                 ,["goxtool", "show_depth", "True"]
                 ,["goxtool", "show_trade", "True"]
@@ -584,6 +585,7 @@ class WinChart(Win):
         bin_asks = []
         bin_bids = []
         mid = self.height / 2
+        sum_total = self.gox.config.get_bool("goxtool", "depth_chart_sum_total")
 
         #
         #
@@ -596,8 +598,12 @@ class WinChart(Win):
         while pos >= 0:
             bin_vol, _bin_vol_quote = book.get_total_up_to(bin_price, True)
             if bin_vol > prev_vol:
-                bin_asks.append([pos, bin_price, bin_vol, 0])
-                max_vol_ask = max(bin_vol, max_vol_ask)
+                if sum_total:
+                    bin_asks.append([pos, bin_price, bin_vol, 0])
+                    max_vol_ask = max(bin_vol, max_vol_ask)
+                else:
+                    bin_asks.append([pos, bin_price, bin_vol - prev_vol, 0])
+                    max_vol_ask = max(bin_vol - prev_vol, max_vol_ask)
                 prev_vol = bin_vol
                 pos -= 1
             bin_price += group
@@ -616,8 +622,12 @@ class WinChart(Win):
             _bin_vol_base, bin_vol_quote = book.get_total_up_to(bin_price, False)
             bin_vol = self.gox.base2int(bin_vol_quote / book.bid)
             if bin_vol > prev_vol:
-                bin_bids.append([pos, bin_price, bin_vol, 0])
-                max_vol_bid = max(bin_vol, max_vol_bid)
+                if sum_total:
+                    bin_bids.append([pos, bin_price, bin_vol, 0])
+                    max_vol_bid = max(bin_vol, max_vol_bid)
+                else:
+                    bin_bids.append([pos, bin_price, bin_vol - prev_vol, 0])
+                    max_vol_bid = max(bin_vol - prev_vol, max_vol_bid)
                 prev_vol = bin_vol
                 pos += 1
             bin_price -= group
@@ -1287,6 +1297,12 @@ def toggle_orderbook_sum(gox):
     toggle_setting(gox, alt, "orderbook_sum_total", 1)
     gox.orderbook.signal_changed(gox.orderbook, None)
 
+def toggle_depth_sum(gox):
+    """toggle the summing in the depth chart on and off"""
+    alt = ["False", "True"]
+    toggle_setting(gox, alt, "depth_chart_sum_total", 1)
+    gox.orderbook.signal_changed(gox.orderbook, None)
+
 def set_ini(gox, setting, value, signal, signal_sender, signal_params):
     """set the ini value and then send a signal"""
     # pylint: disable=W0212
@@ -1376,6 +1392,9 @@ def main():
 
                 elif key == ord("S"):
                     toggle_orderbook_sum(gox)
+
+                elif key == ord("T"):
+                    toggle_depth_sum(gox)
 
                 # lowercase keys go to the strategy module
                 elif key >= ord("a") and key <= ord("z"):
