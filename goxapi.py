@@ -17,7 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913,R0915,W0703
+# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913,R0914,R0915,W0703
 
 import sys
 PY_VERSION = sys.version_info
@@ -1608,6 +1608,12 @@ class Level:
         self.volume = volume
         self.own_volume = 0
 
+        # these fields are only used to store temporary cache values
+        # in some (not all!) levels and is calculated by the OrderBook
+        # on demand, do not access this, use get_total_up_to() instead!
+        self._cache_total_vol = 0
+        self._cache_total_vol_quote = 0
+
 class Order:
     """represents an order"""
     def __init__(self, price, volume, typ, oid="", status=""):
@@ -1647,6 +1653,9 @@ class OrderBook(BaseObject):
         self.ask = 0
         self.total_bid = 0
         self.total_ask = 0
+
+        self._valid_bid_cache = -1 # index of bid with valid _cache_total_vol
+        self._valid_ask_cache = -1 # index of ask with valid _cache_total_vol
 
     def slot_ticker(self, dummy_sender, data):
         """Slot for signal_ticker, incoming ticker message"""
@@ -1793,6 +1802,8 @@ class OrderBook(BaseObject):
         if len(self.asks):
             self.ask = self.asks[0].price
 
+        self._valid_ask_cache = -1
+        self._valid_bid_cache = -1
         self.signal_fulldepth_processed(self, None)
         self.signal_changed(self, None)
 
@@ -1805,6 +1816,8 @@ class OrderBook(BaseObject):
             volume = self.bids[0].volume
             self._update_total_bid(-volume, price)
             self.bids.pop(0)
+            self._valid_bid_cache = -1
+            #self.debug("### repaired bid")
 
     def _repair_crossed_asks(self, ask):
         """remove all asks that are lower that official current ask value,
@@ -1814,6 +1827,8 @@ class OrderBook(BaseObject):
             volume = self.asks[0].volume
             self._update_total_ask(-volume)
             self.asks.pop(0)
+            self._valid_ask_cache = -1
+            #self.debug("### repaired ask")
 
     def _update_asks(self, price, total_vol):
         """update volume at this price level, remove entire level
@@ -1825,6 +1840,8 @@ class OrderBook(BaseObject):
         else:
             level.volume = total_vol
         self._update_total_ask(voldiff)
+        if self._valid_ask_cache >= index:
+            self._valid_ask_cache = index - 1
 
     def _update_bids(self, price, total_vol):
         """update volume at this price level, remove entire level
@@ -1836,6 +1853,8 @@ class OrderBook(BaseObject):
         else:
             level.volume = total_vol
         self._update_total_bid(voldiff, price)
+        if self._valid_bid_cache >= index:
+            self._valid_bid_cache = index - 1
 
     def _update_total_ask(self, volume):
         """update total volume of base currency on the ask side"""
@@ -1872,8 +1891,17 @@ class OrderBook(BaseObject):
 
         # not found, create new Level() and insert
         level = Level(price, 0)
-        lst.insert(low, level)
-        return (low, level)
+        lst.insert(high, level)
+
+        # invalidate the total volume cache above this level
+        if typ == "ask":
+            if self._valid_ask_cache >= high:
+                self._valid_ask_cache = high - 1
+        else:
+            if self._valid_bid_cache >= high:
+                self._valid_bid_cache = high - 1
+
+        return (high, level)
 
     def get_own_volume_at(self, price, typ=None):
         """returns the sum of the volume of own orders at a given price. This
@@ -1892,6 +1920,71 @@ class OrderBook(BaseObject):
             if order.oid == oid:
                 return True
         return False
+
+    # pylint: disable=W0212
+    def get_total_up_to(self, price, is_ask):
+        """return a tuple of the total volume in coins and in fiat between top
+        and this price. This will calculate the total on demand, it has a cache
+        to not repeat the same calculations more often than absolutely needed"""
+        if is_ask:
+            lst = self.asks
+            known_level = self._valid_ask_cache
+            comp = lambda x, y: x < y
+        else:
+            lst = self.bids
+            known_level = self._valid_bid_cache
+            comp = lambda x, y: x > y
+
+        # now first we need the list index of the level we are looking for or
+        # if it doesn't match exactly the index of the level right before that
+        # price, for this we do a quick binary search for the price
+        low = 0
+        high = len(lst)
+        while low < high:
+            mid = (low + high) // 2
+            midval = lst[mid].price
+            if comp(midval, price):
+                low = mid + 1
+            elif comp(price, midval):
+                high = mid
+            else:
+                break
+        if comp(price, midval):
+            needed_level = mid - 1
+        else:
+            needed_level = mid
+
+        # if the total volume at this level has been calculated
+        # already earlier then we don't need to do anything further,
+        # we can immediately return the cached value from that level.
+        if needed_level <= known_level:
+            lvl = lst[needed_level]
+            return (lvl._cache_total_vol, lvl._cache_total_vol_quote)
+
+        # we are still here, this means we must calculate and update
+        # all totals in all levels between last_known and needed_level
+        # after that is done we can return the total at needed_level.
+        if known_level == -1:
+            total = 0
+            total_quote = 0
+        else:
+            total = lst[known_level]._cache_total_vol
+            total_quote = lst[known_level]._cache_total_vol_quote
+
+        mult_base = self.gox.mult_base
+        for i in range(known_level, needed_level):
+            that = lst[i+1]
+            total += that.volume
+            total_quote += that.volume * that.price / mult_base
+            that._cache_total_vol = total
+            that._cache_total_vol_quote = total_quote
+
+        if is_ask:
+            self._valid_ask_cache = needed_level
+        else:
+            self._valid_bid_cache = needed_level
+
+        return (total, total_quote)
 
     def init_own(self, own_orders):
         """called by gox when the initial order list is downloaded,

@@ -31,7 +31,6 @@ import goxapi
 import logging
 import locale
 import math
-import os
 import sys
 import time
 import traceback
@@ -296,72 +295,144 @@ class WinOrderBook(Win):
         if group == 0:
             group = 1
 
-        # print the asks
         book = self.gox.orderbook
-        cnt = len(book.asks)
 
-        pos = mid - 1
-        i = 0
-        vol = 0
-        ownvol = 0
-        while pos >= 0 and  i < cnt:
-            price = book.asks[i].price
-            if i == 0:
-                this_bin = price
-                vol = book.asks[i].volume
-                ownvol = book.asks[i].own_volume
-            else:
-                if price <= this_bin:
-                    # still the same bin, add volumes
-                    vol += book.asks[i].volume
-                    ownvol += book.asks[i].own_volume
-                else:
-                    # paint the existing bin and...
-                    paint_row(pos, this_bin, vol, ownvol, col_ask)
+        #
+        #
+        # paint the asks (first we put them into bins[] then we paint them)
+        #
+        if len(book.asks):
+            i = 0
+            bins = []
+            pos = mid - 1
+            vol = 0
+            prev_vol = 0
+
+            # no grouping, bins can be created in one simple and fast loop
+            if group == 1:
+                cnt = len(book.asks)
+                while pos >= 0 and i < cnt:
+                    level = book.asks[i]
+                    price = level.price
+                    if sum_total:
+                        vol += level.volume
+                    else:
+                        vol = level.volume
+                    ownvol = level.own_volume
+                    bins.append([pos, price, vol, ownvol])
                     pos -= 1
-                    # ...begin a new bin
-                    this_bin = int(math.ceil(float(price) / group) * group)
-                    if sum_total:
-                        vol += book.asks[i].volume
-                    else:
-                        vol = book.asks[i].volume
-                    ownvol = book.asks[i].own_volume
-            i += 1
-        if cnt and pos >= 0:
-            paint_row(pos, this_bin, vol, ownvol, col_ask)
+                    i += 1
 
-        # print the bids
-        cnt = len(book.bids)
-        pos = mid + 1
-        i = 0
-        vol = 0
-        ownvol = 0
-        while pos < self.height and  i < cnt:
-            price = book.bids[i].price
-            if i == 0:
-                this_bin = price
-                vol = book.bids[i].volume
-                ownvol = book.bids[i].own_volume
+            # with gouping its a bit more complicated
             else:
-                if price >= this_bin:
-                    # still the same bin, add volumes
-                    vol += book.bids[i].volume
-                    ownvol += book.bids[i].own_volume
-                else:
-                    # paint the current bin and...
-                    paint_row(pos, this_bin, vol, ownvol, col_bid)
-                    pos += 1
-                    # ...begin a new bin
-                    this_bin = int(math.floor(float(price) / group) * group)
-                    if sum_total:
-                        vol += book.bids[i].volume
-                    else:
-                        vol = book.bids[i].volume
-                    ownvol = book.bids[i].own_volume
-            i += 1
-        if cnt and pos < self.height:
-            paint_row(pos, this_bin, vol, ownvol, col_bid)
+                # first bin is exact lowest ask price
+                price = book.asks[0].price
+                vol = book.asks[0].volume
+                bins.append([pos, price, vol, 0])
+                prev_vol = vol
+                pos -= 1
 
+                # now all following bins
+                bin_price = int(math.ceil(float(price) / group) * group)
+                while pos >= 0:
+                    vol, _vol_quote = book.get_total_up_to(bin_price, True)
+                    if vol > prev_vol:
+                        # append only non-empty bins
+                        if sum_total:
+                            bins.append([pos, bin_price, vol, 0])
+                        else:
+                            bins.append([pos, bin_price, vol - prev_vol, 0])
+                        prev_vol = vol
+                        pos -= 1
+                    bin_price += group
+                    if bin_price > book.asks[-1].price + group:
+                        # terminate eventually when there are no more asks
+                        break
+
+                # now add the own volumes to their bins
+                for order in book.owns:
+                    if order.typ == "ask":
+                        order_bin_price = int(math.ceil(float(order.price) / group) * group)
+                        for abin in bins:
+                            if abin[1] == order.price:
+                                abin[3] += order.volume
+                                break
+                            if abin[1] == order_bin_price:
+                                abin[3] += order.volume
+                                break
+
+            # now finally paint the asks
+            for pos, price, vol, ownvol in bins:
+                paint_row(pos, price, vol, ownvol, col_ask)
+
+        #
+        #
+        # paint the bids (first we put them into bins[] then we paint them)
+        #
+        if len(book.bids):
+            i = 0
+            bins = []
+            pos = mid + 1
+            vol = 0
+            prev_vol = 0
+
+            # no grouping, bins can be created in one simple and fast loop
+            if group == 1:
+                cnt = len(book.bids)
+                while pos < self.height and i < cnt:
+                    level = book.bids[i]
+                    price = level.price
+                    if sum_total:
+                        vol += level.volume
+                    else:
+                        vol = level.volume
+                    ownvol = level.own_volume
+                    bins.append([pos, price, vol, ownvol])
+                    prev_vol = vol
+                    pos += 1
+                    i += 1
+
+            # with gouping its a bit more complicated
+            else:
+                # first bin is exact lowest ask price
+                price = book.bids[0].price
+                vol = book.bids[0].volume
+                bins.append([pos, price, vol, 0])
+                prev_vol = vol
+                pos += 1
+
+                # now all following bins
+                bin_price = int(math.floor(float(price) / group) * group)
+                while pos < self.height:
+                    vol, _vol_quote = book.get_total_up_to(bin_price, False)
+                    if vol > prev_vol:
+                        # append only non-empty bins
+                        if sum_total:
+                            bins.append([pos, bin_price, vol, 0])
+                        else:
+                            bins.append([pos, bin_price, vol - prev_vol, 0])
+                        prev_vol = vol
+                        pos += 1
+                    bin_price -= group
+                    if bin_price < book.bids[-1].price - group:
+                        # terminate eventually when there are no more bids
+                        break
+
+                # now add the own volumes to their bins
+                for order in book.owns:
+                    if order.typ == "bid":
+                        order_bin_price = int(math.floor(float(order.price) / group) * group)
+                        for abin in bins:
+                            if abin[1] == order.price:
+                                abin[3] += order.volume
+                                break
+                            if abin[1] == order_bin_price:
+                                abin[3] += order.volume
+                                break
+
+            # now finally paint the bids
+            for pos, price, vol, ownvol in bins:
+                paint_row(pos, price, vol, ownvol, col_bid)
 
     def slot_changed(self, book, dummy_data):
         """Slot for orderbook.signal_changed"""
@@ -484,7 +555,7 @@ class WinChart(Win):
         self.win.erase()
 
         book = self.gox.orderbook
-        if not book.bid or not book.ask:
+        if not (book.bid and book.ask and len(book.bids) and len(book.asks)):
             # orderbook is not initialized yet, paint nothing
             return
 
@@ -498,85 +569,78 @@ class WinChart(Win):
             group = 1
         group = self.gox.quote2int(group)
 
+        max_vol_ask = 0
+        max_vol_bid = 0
         bin_asks = []
         bin_bids = []
         mid = self.height / 2
 
-        # sum up the asks
-        cnt = len(book.asks)
-        bin_vol = 0
-        own_vol = 0
+        #
+        #
+        # bin the asks
+        #
         pos = mid - 1
-        i = 0
-        while i < cnt and pos >= 0:
-            level = book.asks[i]
-            price = level.price
-            if i == 0:
-                bin_price = int(math.ceil(float(price) / group) * group)
-            if price > bin_price:
-                bin_asks.append((bin_price, bin_vol, own_vol))
+        prev_vol = 0
+        highest_ask = book.asks[-1].price
+        bin_price = int(math.ceil(float(book.asks[0].price) / group) * group)
+        while pos >= 0:
+            bin_vol, _bin_vol_quote = book.get_total_up_to(bin_price, True)
+            if bin_vol > prev_vol:
+                bin_asks.append([pos, bin_price, bin_vol, 0])
+                max_vol_ask = max(bin_vol, max_vol_ask)
+                prev_vol = bin_vol
                 pos -= 1
-                bin_price = int(math.ceil(float(price) / group) * group)
-                own_vol = level.own_volume
-            else:
-                own_vol += level.own_volume
-            bin_vol += level.volume
-            i += 1
+            bin_price += group
+            if bin_price > highest_ask + group:
+                break
 
-        #append the last one
-        if bin_vol:
-            bin_asks.append((bin_price, bin_vol, own_vol))
-
-        max_vol_ask = bin_vol
-
-        # sum up the bids
-        cnt = len(book.bids)
-        bin_vol = 0
-        own_vol = 0
+        #
+        #
+        # bin the bids
+        #
         pos = mid + 1
-        i = 0
-        while i < cnt and pos < self.height:
-            level = book.bids[i]
-            price = level.price
-            if i == 0:
-                bin_price = int(math.floor(float(price) / group) * group)
-            if price < bin_price:
-                bin_bids.append((bin_price, bin_vol, own_vol))
+        prev_vol = 0
+        lowest_bid = book.bids[-1].price
+        bin_price = int(math.floor(float(book.bids[0].price) / group) * group)
+        while pos < self.height:
+            _bin_vol_base, bin_vol_quote = book.get_total_up_to(bin_price, False)
+            bin_vol = self.gox.base2int(bin_vol_quote / book.bid)
+            if bin_vol > prev_vol:
+                bin_bids.append([pos, bin_price, bin_vol, 0])
+                max_vol_bid = max(bin_vol, max_vol_bid)
+                prev_vol = bin_vol
                 pos += 1
-                bin_price = int(math.floor(float(price) / group) * group)
-                own_vol = level.own_volume
-            else:
-                own_vol += level.own_volume
-            bin_vol += level.volume * price / book.bid
-            i += 1
-
-        #append the last one
-        if bin_vol:
-            bin_bids.append((bin_price, bin_vol, own_vol))
-
-        max_vol_bid = bin_vol
-
-        if not max_vol_ask:
-            return
-        if not max_vol_bid:
-            return
+            bin_price -= group
+            if bin_price < min(lowest_bid - group, 0):
+                break
 
         max_vol_tot = max(max_vol_ask, max_vol_bid)
+        if not max_vol_tot:
+            return
         mult_x = float(self.width - BAR_LEFT_EDGE - 1) / max_vol_tot
 
+        # add the own volume to the bins
+        for order in book.owns:
+            if order.typ == "ask":
+                bin_price = int(math.ceil(float(order.price) / group) * group)
+                for abin in bin_asks:
+                    if abin[1] == bin_price:
+                        abin[3] += order.volume
+                        break
+            else:
+                bin_price = int(math.floor(float(order.price) / group) * group)
+                for abin in bin_bids:
+                    if abin[1] == bin_price:
+                        abin[3] += order.volume
+                        break
+
         # paint the asks
-        pos = mid - 1
-        while len(bin_asks) and pos >= 0:
-            (price, vol, own) = bin_asks.pop(0)
+        for pos, price, vol, own in bin_asks:
             paint_depth(pos, price, vol, own, col_ask)
-            pos -= 1
 
         # paint the bids
-        pos = mid + 1
-        while len(bin_bids) and pos < self.height:
-            (price, vol, own) = bin_bids.pop(0)
+        for pos, price, vol, own in bin_bids:
             paint_depth(pos, price, vol, own, col_bid)
-            pos += 1
 
     def paint_history_chart(self):
         """paint a history candlestick chart"""
