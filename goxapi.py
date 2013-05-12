@@ -159,31 +159,24 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "history_timeframe", "15"]
                 ,["gox", "secret_key", ""]
                 ,["gox", "secret_secret", ""]
-                ,["goxtool", "set_xterm_title", "True"]
-                ,["goxtool", "dont_truncate_logfile", "False"]
-                ,["goxtool", "orderbook_group", "0"]
-                ,["goxtool", "orderbook_sum_total", "False"]
-                ,["goxtool", "display_right", "history_chart"]
-                ,["goxtool", "depth_chart_group", "1"]
-                ,["goxtool", "show_ticker", "True"]
-                ,["goxtool", "show_depth", "True"]
-                ,["goxtool", "show_trade", "True"]
-                ,["goxtool", "show_trade_own", "True"]
                 ]
 
     def __init__(self, filename):
         self.filename = filename
         SafeConfigParser.__init__(self)
         self.load()
-        for (sect, opt, default) in self._DEFAULTS:
-            self._default(sect, opt, default)
-
+        self.init_defaults(self._DEFAULTS)
         # upgrade from deprecated "currency" to "quote_currency"
         # todo: remove this piece of code again in a few months
         if self.has_option("gox", "currency"):
             self.set("gox", "quote_currency", self.get_string("gox", "currency"))
             self.remove_option("gox", "currency")
             self.save()
+
+    def init_defaults(self, defaults):
+        """add the missing default values, default is a list of defaults"""
+        for (sect, opt, default) in defaults:
+            self._default(sect, opt, default)
 
     def save(self):
         """save the config to the .ini file"""

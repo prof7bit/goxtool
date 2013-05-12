@@ -66,11 +66,21 @@ COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["dialog_sel",      curses.COLOR_CYAN,   curses.COLOR_BLUE]
             ,["dialog_sel_text", curses.COLOR_BLUE,   curses.COLOR_YELLOW]
             ,["dialog_sel_sel",  curses.COLOR_YELLOW, curses.COLOR_BLUE]
-
             ,["dialog_bid_text", curses.COLOR_GREEN,  curses.COLOR_BLACK]
             ,["dialog_ask_text", curses.COLOR_RED,    curses.COLOR_WHITE]
-
             ]
+
+INI_DEFAULTS =  [["goxtool", "set_xterm_title", "True"]
+                ,["goxtool", "dont_truncate_logfile", "False"]
+                ,["goxtool", "orderbook_group", "0"]
+                ,["goxtool", "orderbook_sum_total", "False"]
+                ,["goxtool", "display_right", "history_chart"]
+                ,["goxtool", "depth_chart_group", "1"]
+                ,["goxtool", "show_ticker", "True"]
+                ,["goxtool", "show_depth", "True"]
+                ,["goxtool", "show_trade", "True"]
+                ,["goxtool", "show_trade_own", "True"]
+                ]
 
 COLOR_PAIR = {}
 
@@ -1446,6 +1456,7 @@ def main():
     args = argp.parse_args()
 
     config = goxapi.GoxConfig("goxtool.ini")
+    config.init_defaults(INI_DEFAULTS)
     secret = goxapi.Secret(config)
     secret.password_from_commandline_option = args.password
     if args.add_secret:
