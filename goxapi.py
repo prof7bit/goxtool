@@ -1669,7 +1669,6 @@ class OrderBook(BaseObject):
             self._update_asks(price, total_vol)
         if typ == "bid":
             self._update_bids(price, total_vol)
-
         if (toa, tob) != (self.total_ask, self.total_bid):
             self.signal_changed(self, None)
 
@@ -1862,8 +1861,14 @@ class OrderBook(BaseObject):
 
     def _update_level_own_volume(self, typ, price, own_volume):
         """update the own_volume cache in the Level object at price"""
-        (_index, level) = self._find_level_or_insert_new(typ, price)
-        level.own_volume = own_volume
+        (index, level) = self._find_level_or_insert_new(typ, price)
+        if level.volume == 0 and own_volume == 0:
+            if typ == "ask":
+                self.asks.pop(index)
+            else:
+                self.bids.pop(index)
+        else:
+            level.own_volume = own_volume
 
     def _find_level_or_insert_new(self, typ, price):
         """find the Level() object in bids or asks or insert a new
