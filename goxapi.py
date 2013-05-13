@@ -1655,9 +1655,11 @@ class OrderBook(BaseObject):
         (bid, ask) = data
         self.bid = bid
         self.ask = ask
+        toa, tob = self.total_ask, self.total_bid
         self._repair_crossed_asks(ask)
         self._repair_crossed_bids(bid)
-        self.signal_changed(self, None)
+        if (toa, tob) != (self.total_ask, self.total_bid):
+            self.signal_changed(self, None)
 
     def slot_depth(self, dummy_sender, data):
         """Slot for signal_depth, process incoming depth message"""
