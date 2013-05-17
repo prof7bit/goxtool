@@ -520,12 +520,10 @@ class WinChart(Win):
                     curses.ACS_VLINE, COLOR_PAIR["chart_text"])
             if posy >= sopen and posy < sclose:
                 # red body
-                self.addch(posy, posx,
-                    ord(" "), curses.A_REVERSE + COLOR_PAIR["chart_down"])
+                self.addch(posy, posx, curses.ACS_CKBOARD, curses.A_BOLD + COLOR_PAIR["chart_down"])
             if posy >= sclose and posy < sopen:
                 # green body
-                self.addch(posy, posx,
-                    ord(" "), curses.A_REVERSE + COLOR_PAIR["chart_up"])
+                self.addch(posy, posx, curses.ACS_CKBOARD, curses.A_BOLD + COLOR_PAIR["chart_up"])
             if posy >= sopen and posy >= sclose and posy < slow:
                 # lower wick
                 # pylint: disable=E1101
@@ -1276,18 +1274,18 @@ def toggle_setting(gox, alternatives, option_name, direction):
 def toggle_depth_group(gox, direction):
     """toggle the step width of the depth chart"""
     if gox.curr_quote == "JPY":
-        alt = ["10", "25", "50", "100", "200", "500", "1000"]
+        alt = ["5", "10", "25", "50", "100", "200", "500", "1000"]
     else:
-        alt = ["0.1", "0.25", "0.5", "1", "2", "5", "10"]
+        alt = ["0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10"]
     toggle_setting(gox, alt, "depth_chart_group", direction)
     gox.orderbook.signal_changed(gox.orderbook, None)
 
 def toggle_orderbook_group(gox, direction):
     """toggle the group width of the orderbook"""
     if gox.curr_quote == "JPY":
-        alt = ["0", "10", "25", "50", "100", "200", "500", "1000"]
+        alt = ["0", "5", "10", "25", "50", "100", "200", "500", "1000"]
     else:
-        alt = ["0", "0.1", "0.25", "0.5", "1", "2", "5", "10"]
+        alt = ["0", "0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10"]
     toggle_setting(gox, alt, "orderbook_group", direction)
     gox.orderbook.signal_changed(gox.orderbook, None)
 
