@@ -635,7 +635,7 @@ class WinChart(Win):
         max_vol_tot = max(max_vol_ask, max_vol_bid)
         if not max_vol_tot:
             return
-        mult_x = float(self.width - BAR_LEFT_EDGE - 1) / max_vol_tot
+        mult_x = float(self.width - BAR_LEFT_EDGE - 2) / max_vol_tot
 
         # add the own volume to the bins
         for order in book.owns:
