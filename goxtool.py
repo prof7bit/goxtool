@@ -543,7 +543,7 @@ class WinChart(Win):
         """paint a depth chart"""
 
         # pylint: disable=C0103
-        if self.gox.curr_quote == "JPY":
+        if self.gox.curr_quote in "JPY SEK":
             BAR_LEFT_EDGE = 7
             FORMAT_STRING = "%6.0f"
         else:
@@ -1273,7 +1273,7 @@ def toggle_setting(gox, alternatives, option_name, direction):
 
 def toggle_depth_group(gox, direction):
     """toggle the step width of the depth chart"""
-    if gox.curr_quote == "JPY":
+    if gox.curr_quote in "JPY SEK":
         alt = ["5", "10", "25", "50", "100", "200", "500", "1000"]
     else:
         alt = ["0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10"]
@@ -1282,7 +1282,7 @@ def toggle_depth_group(gox, direction):
 
 def toggle_orderbook_group(gox, direction):
     """toggle the group width of the orderbook"""
-    if gox.curr_quote == "JPY":
+    if gox.curr_quote in "JPY SEK":
         alt = ["0", "5", "10", "25", "50", "100", "200", "500", "1000"]
     else:
         alt = ["0", "0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10"]

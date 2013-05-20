@@ -69,7 +69,7 @@ def int2str(value_int, currency):
     """return currency integer formatted as a string"""
     if currency in "BTC LTC NMC":
         return ("%16.8f" % (value_int / 100000000.0))
-    if currency == "JPY":
+    elif currency in "JPY SEK":
         return ("%12.3f" % (value_int / 1000.0))
     else:
         return ("%12.5f" % (value_int / 100000.0))
@@ -79,7 +79,7 @@ def int2float(value_int, currency):
     """convert integer to float, determine the factor by currency name"""
     if currency in "BTC LTC NMC":
         return value_int / 100000000.0
-    if currency == "JPY":
+    elif currency in "JPY SEK":
         return value_int / 1000.0
     else:
         return value_int / 100000.0
@@ -89,7 +89,7 @@ def float2int(value_float, currency):
     """convert float value to integer, determine the factor by currency name"""
     if currency in "BTC LTC NMC":
         return int(round(value_float * 100000000))
-    if currency == "JPY":
+    elif currency in "JPY SEK":
         return int(round(value_float * 1000))
     else:
         return int(round(value_float * 100000))
@@ -1204,7 +1204,7 @@ class Gox(BaseObject):
         self.currency = self.curr_quote # deprecated, use curr_quote instead
 
         # these are needed for conversion from/to intereger, float, string
-        if self.curr_quote == "JPY":
+        if self.curr_quote in "JPY SEK":
             self.mult_quote = 1e3
             self.format_quote = "%12.3f"
         else:
