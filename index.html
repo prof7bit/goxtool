@@ -36,24 +36,26 @@ alt="goxtool.py screenshot of terminal running goxtool" src="screenshot1.png"
 
 <p>Open a terminal in an empty folder or in the folder you usually use to clone
 repositories and clone the master branch:<br />
-<br />
+</p>
 <pre>git clone git://github.com/prof7bit/goxtool.git</pre>
-<br />
-This will create a folder named <span class="codeword">goxtool</span>
+
+<p>This will create a folder named <span class="codeword">goxtool</span>
 containing all the needed files. Thats all, now it is installed and ready to
 use. You can now already watch live market data (without any trading functions
 being enabled), you can later add a MtGox API-key to it to have full access to
 your account but for now just proceed to the next step, start it without an
-account, just to make sure everything works.<br />
+account, just to make sure everything works.</p>
 
 <h2>How to start it </h2>
-change into to the <span class="codeword">goxtool</span> folder that was
+
+<p>change into to the <span class="codeword">goxtool</span> folder that was
 created in the previous step and start goxtool.py:<br />
-<br />
-<pre>cd goxtool<br />./goxtool.py</pre>
-<br />
-Keyboard commands (only the ones useful in view-only mode, without Mt.Gox
-account):<br />
+</p>
+<pre>cd goxtool
+./goxtool.py</pre>
+
+<p>Keyboard commands (only the ones useful in view-only mode, without Mt.Gox
+account):</p>
 <ul>
   <li><span class="keycmd">q</span> quit</li>
   <li><span class="keycmd">l</span> (lower case "L") reload the strategy module
@@ -74,10 +76,11 @@ account):<br />
   <li><span class="keycmd">.</span> depth chart zoom in (decrease group
   size)</li>
 </ul>
-(There will be even more commands once you connect it to your Mt.Gox
-account)<br />
-<br />
-There is also a <span class="codeword">goxtool.ini</span> file, it will be
+
+<p>(There will be even more commands once you connect it to your Mt.Gox
+account)</p>
+
+<p>There is also a <span class="codeword">goxtool.ini</span> file, it will be
 created on the first start. In the <span class="codeword">.ini</span> file
 there are some parameters you can change, for example the currency you want to
 trade BTC against or some parameters regarding the network protocol. Some of
@@ -89,24 +92,24 @@ implements both protocols, the websocket server is currently more reliable.
 There is also an option to use the http API for trading commands, the default
 is to send all commands to the streaming socket, this affects only what happens
 when you buy/sell/cancel, it does not affect the streaming update of orderbook
-and chart.<br />
+and chart.</p>
 
-<h3>socketio or websocket? Which one is worse?<br />
-</h3>
-The two options are <span class="codeword">socketio</span> or <span
+<h3>socketio or websocket? Which one is worse?</h3>
+
+<p>The two options are <span class="codeword">socketio</span> or <span
 class="codeword">websocket</span>, the .ini setting for this is <span
 class="codeword">use_plain_old_websocket</span>. To force it connecting with
 socketio:<br />
-<br />
+</p>
 <pre>./goxtool.py --protocol=socketio</pre>
-<br />
- To force it connecting to the websocket server do this:<br />
-<br />
+
+<p> To force it connecting to the websocket server do this:<br />
+</p>
 <pre>./goxtool.py --protocol=websocket</pre>
-<br />
-It has turned out that websocket is currently the most reliable protocol. These
-options on the command line take precedence over what you have configured in
-the .ini file (but it won't change your .ini), you can make websocket the
+
+<p>It has turned out that websocket is currently the most reliable protocol.
+These options on the command line take precedence over what you have configured
+in the .ini file (but it won't change your .ini), you can make websocket the
 default (so you don't need this option anymore) by editing the ini file.<br />
 <br />
 If you experience a high lag between sending an order and the ack (the
@@ -120,15 +123,16 @@ class="codeword">--use-http</span> can be combined with either <span
 class="codeword">socketio</span> or <span
 class="codeword">websocket</span>.<br />
 <br />
-The following is what I am currently using and I recommend it:<br />
-<br />
+The following is what I am currently using and I recommend it: </p>
 <pre>./goxtool.py --protocol=websocket --use-http</pre>
 
 <h2>How to connect it to your MtGox account</h2>
-Do the following:<br />
+
+<p>Do the following:</p>
 <pre>./goxtool.py --add-secret</pre>
-This will now ask you for key, secret and password. Key and secret belong to a
-shared secret that is created by MtGox to authenticate your trading software
+
+<p>This will now ask you for key, secret and password. Key and secret belong to
+a shared secret that is created by MtGox to authenticate your trading software
 against their API. You can request as many keys from MtGox as you need, every
 application you connect to your MtGox account should have its own key, you can
 also at any time delete the keys again that you no longer need.<br />
@@ -156,21 +160,24 @@ press enter again and now it will tell you that it has been encrypted and saved
 to the .ini file and exit.<br />
 <br />
 Now start goxtool again:<br />
-<br />
-<pre>./goxtool.py<br />enter passphrase for secret: </pre>
-From now on every time you start goxtool it will ask you for the passphrase in
-order to be able to decrypt and use the secret. Enter your passphrase, press
+</p>
+<pre>./goxtool.py
+enter passphrase for secret: </pre>
+
+<p>From now on every time you start goxtool it will ask you for the passphrase
+in order to be able to decrypt and use the secret. Enter your passphrase, press
 enter. Now goxtool will start and you will notice that now it is showing your
 account balance at the top of the window. Now all trading functions are
 enabled.<br />
 <br />
-Keyboard commands for trading:<br />
+Keyboard commands for trading:</p>
 <ul>
   <li><span class="keycmd">F4</span> : New buy order</li>
   <li><span class="keycmd">F5</span> : New sell order</li>
   <li><span class="keycmd">F6</span> : View orders / cancel order(s)</li>
 </ul>
-In the cancel dialog you can move up/down with the arrow keys, use <span
+
+<p>In the cancel dialog you can move up/down with the arrow keys, use <span
 class="keycmd">INS</span> to select/unselect orders (you can select multiple
 orders and cancel them all at once) or if you just quickly want to cancel only
 one order just highlight to the order and hit <span class="keycmd">F8</span>.
@@ -183,10 +190,11 @@ previous field, decimal separator is . (not comma, even on European computers),
 send the order with <span class="keycmd">enter</span>. <br />
 <br />
 All dialogs can be closed with <span class="keycmd">F10</span> or <span
-class="keycmd">ESC</span>.<br />
+class="keycmd">ESC</span>.</p>
 
 <h2>Strategy module, strategy.py</h2>
-You can write your own trading bots. There is a file named strategy.py, it
+
+<p>You can write your own trading bots. There is a file named strategy.py, it
 contains a class <span class="codeword">Strategy()</span> which constitutes a
 trading bot that by default does nothing (its an empty skeleton). It has event
 methods (slots) connected to signals that will be fired when certain events
@@ -209,12 +217,13 @@ different name and leave <span class="codeword">strategy.py</span> alone so it
 won't collide with upstream changes you pull from github. By default goxtool
 will load <span class="codeword">strategy.py</span> but you can start it with
 the <span class="codeword">--strategy</span> command line option to specify
-your own strategy module or a comma separated list of many modules:<br />
+your own strategy module or a comma separated list of many modules:</p>
 <pre>./goxtool --strategy=mybot.py,myotherbot.py</pre>
-You can even edit the strategy while goxtool is running and then reload it at
-runtime (this can be very useful), just press the <span
+
+<p>You can even edit the strategy while goxtool is running and then reload it
+at runtime (this can be very useful), just press the <span
 class="keycmd">l</span> key (lowercase L) and it will do the following
-things:<br />
+things:</p>
 <ul>
   <li>emit signal _strategy_unload, this will call <span
     class="codeword">slot_before_unload()</span><br />
@@ -227,7 +236,8 @@ things:<br />
   <li>create a new instance of <span class="codeword">Strategy()</span> and
     call your<span class="codeword">__init__()</span> again. </li>
 </ul>
-You should persist the state of your bot (if needed) in <span
+
+<p>You should persist the state of your bot (if needed) in <span
 class="codeword">slot_before_unload()</span> and reload it in <span
 class="codeword">__init__()</span>. Leave the <span
 class="codeword">__del__()</span> method alone, its only there to print a log
@@ -260,17 +270,23 @@ an official order ID. I know this is not optimal (because this part of the code
 is not yet complete, eventually there will be dedicated signals to notify your
 bot about the results of trading commands) and also this document is not yet a
 complete documentation. If you really want to dive into this: use the source,
-Luke.<br />
+Luke.</p>
 
 <h2>How to keep it up to date</h2>
-Occasionally I will commit bugfixes, improvements, etc. To update your copy of
-goxtool (assuming you previously installed it with git clone and not by just
-downloading a zip file) do the following:<br />
+
+<p>Occasionally I will commit bugfixes, improvements, etc. To update your copy
+of goxtool (assuming you previously installed it with git clone and not by just
+downloading a zip file) do the following:</p>
 <pre>git pull</pre>
-and if that complains because of local uncommitted changes because you edited
-the strategy.py module or did other changes to the code then try this:<br />
-<pre>git stash<br />git pull<br />git stash pop</pre>
-Of course you could have also have followed my previous advise to not do
+
+<p>and if that complains because of local uncommitted changes because you
+edited the strategy.py module or did other changes to the code then try
+this:</p>
+<pre>git stash
+git pull
+git stash pop</pre>
+
+<p>Of course you could have also have followed my previous advise to not do
 anything other than simple throw-away experiments in strategy.py so you can
 always git reset --hard if everything else fails and use a separate file (and
 probably even separate git branches) for serious bot development but this is
