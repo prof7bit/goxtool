@@ -735,11 +735,11 @@ class WinChart(Win):
                     )
                 labelprice += step
 
-    def slot_hist_changed(self, dummy_history, (dummy_cnt)):
+    def slot_hist_changed(self, dummy_history, _data):
         """Slot for history.signal_changed"""
         self.do_paint()
 
-    def slot_book_changed(self, dummy_book, dummy_data):
+    def slot_book_changed(self, dummy_book, _data):
         """Slot for orderbook.signal_changed"""
         self.do_paint()
 
