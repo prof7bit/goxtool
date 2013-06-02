@@ -447,17 +447,19 @@ class WinOrderBook(Win):
 
     def slot_changed(self, book, dummy_data):
         """Slot for orderbook.signal_changed"""
-        self.do_paint()
-
         # update the xterm title (this is not handled by curses)
         if self.gox.config.get_bool("goxtool", "set_xterm_title"):
             last_candle = self.gox.history.last_candle()
             if last_candle:
+                self.win.erase()
                 title = self.gox.quote2str(last_candle.cls).strip()
                 title += " - goxtool -"
                 title += " bid:" + self.gox.quote2str(book.bid).strip()
                 title += " ask:" + self.gox.quote2str(book.ask).strip()
-                curses.putp("\033]0;%s\007" % title)
+                curses.putp("\x1b]2;%s\x07" % title)
+
+        self.do_paint()
+
 
 
 class WinChart(Win):
