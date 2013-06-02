@@ -1462,7 +1462,7 @@ class Gox(BaseObject):
         total_volume = int(msg["total_volume_int"])
 
         delay = time.time() * 1e6 - timestamp
-        self.socket_lag = (self.socket_lag * 5 + delay) / 6
+        self.socket_lag = (self.socket_lag * 2 + delay) / 3
 
         self.debug("depth: %s: %s @ %s total vol: %s (age: %0.2f s)" % (
             typ,
