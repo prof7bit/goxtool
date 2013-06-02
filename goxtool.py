@@ -446,9 +446,7 @@ class WinOrderBook(Win):
             for pos, price, vol, ownvol in bins:
                 paint_row(pos, price, vol, ownvol, col_bid)
 
-    def slot_changed(self, book, dummy_data):
-        """Slot for orderbook.signal_changed"""
-        # update the xterm title (this is not handled by curses)
+        # update the xterm title bar
         if self.gox.config.get_bool("goxtool", "set_xterm_title"):
             last_candle = self.gox.history.last_candle()
             if last_candle:
@@ -460,6 +458,10 @@ class WinOrderBook(Win):
                 sys_out.write("\x1b]0;%s\x07" % title)
                 sys_out.flush()
 
+
+    def slot_changed(self, book, dummy_data):
+        """Slot for orderbook.signal_changed"""
+        # update the xterm title (this is not handled by curses)
         self.do_paint()
 
 
