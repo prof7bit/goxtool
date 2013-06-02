@@ -36,6 +36,7 @@ import time
 import traceback
 import threading
 
+sys_out = sys.stdout
 
 #
 #
@@ -455,7 +456,9 @@ class WinOrderBook(Win):
                 title += " - goxtool -"
                 title += " bid:" + self.gox.quote2str(book.bid).strip()
                 title += " ask:" + self.gox.quote2str(book.ask).strip()
-                curses.putp("\x1b]0;%s\x07" % title)
+                #curses.putp("\x1b]0;%s\x07" % title)
+                sys_out.write("\x1b]0;%s\x07" % title)
+                sys_out.flush()
 
         self.do_paint()
 
