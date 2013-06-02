@@ -451,12 +451,11 @@ class WinOrderBook(Win):
         if self.gox.config.get_bool("goxtool", "set_xterm_title"):
             last_candle = self.gox.history.last_candle()
             if last_candle:
-                self.win.erase()
                 title = self.gox.quote2str(last_candle.cls).strip()
                 title += " - goxtool -"
                 title += " bid:" + self.gox.quote2str(book.bid).strip()
                 title += " ask:" + self.gox.quote2str(book.ask).strip()
-                curses.putp("\x1b]2;%s\x07" % title)
+                curses.putp("\x1b]0;%s\x07" % title)
 
         self.do_paint()
 
