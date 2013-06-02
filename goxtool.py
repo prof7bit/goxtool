@@ -461,7 +461,6 @@ class WinOrderBook(Win):
 
     def slot_changed(self, book, dummy_data):
         """Slot for orderbook.signal_changed"""
-        # update the xterm title (this is not handled by curses)
         self.do_paint()
 
 
