@@ -484,7 +484,7 @@ class WinChart(Win):
         self.height = self.termheight - HEIGHT_CON - HEIGHT_STATUS
 
     def is_in_range(self, price):
-        """is this price in the currently viible range?"""
+        """is this price in the currently visible range?"""
         return price <= self.pmax and price >= self.pmin
 
     def get_optimal_step(self, num_min):
