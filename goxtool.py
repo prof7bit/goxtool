@@ -31,12 +31,13 @@ import goxapi
 import logging
 import locale
 import math
+import os
 import sys
 import time
 import traceback
 import threading
 
-sys_out = sys.stdout
+sys_out = sys.stdout #pylint: disable=C0103
 
 #
 #
@@ -91,8 +92,11 @@ def init_colors():
     can then later quickly be retrieved from the COLOR_PAIR[] dict"""
     index = 1
     for (name, back, fore) in COLORS:
-        curses.init_pair(index, fore, back)
-        COLOR_PAIR[name] = curses.color_pair(index)
+        if curses.has_colors():
+            curses.init_pair(index, fore, back)
+            COLOR_PAIR[name] = curses.color_pair(index)
+        else:
+            COLOR_PAIR[name] = 0
         index += 1
 
 class Win:
@@ -454,12 +458,15 @@ class WinOrderBook(Win):
                 title += " - goxtool -"
                 title += " bid:" + self.gox.quote2str(book.bid).strip()
                 title += " ask:" + self.gox.quote2str(book.ask).strip()
-                #curses.putp("\x1b]0;%s\x07" % title)
-                sys_out.write("\x1b]0;%s\x07" % title)
-                sys_out.flush()
 
+                term = os.environ["TERM"]
+                # the following is incomplete but better safe than sorry
+                # if you know more terminals then please provide a patch
+                if "xterm" in term or "rxvt" in term:
+                    sys_out.write("\x1b]0;%s\x07" % title)
+                    sys_out.flush()
 
-    def slot_changed(self, book, dummy_data):
+    def slot_changed(self, _book, _dummy):
         """Slot for orderbook.signal_changed"""
         self.do_paint()
 
@@ -474,6 +481,16 @@ class WinChart(Win):
         self.pmax = 0
         gox.history.signal_changed.connect(self.slot_hist_changed)
         gox.orderbook.signal_changed.connect(self.slot_book_changed)
+
+        # some terminals do not support reverse video
+        # so we cannot use reverse space for candle bodies
+        if curses.A_REVERSE & curses.termattrs():
+            self.body_char = " "
+            self.body_attr = curses.A_REVERSE
+        else:
+            self.body_char = curses.ACS_CKBOARD # pylint: disable=E1101
+            self.body_attr = 0
+
         Win.__init__(self, stdscr)
 
     def calc_size(self):
@@ -521,19 +538,17 @@ class WinChart(Win):
             if posy >= shigh and posy < sopen and posy < sclose:
                 # upper wick
                 # pylint: disable=E1101
-                self.addch(posy, posx,
-                    curses.ACS_VLINE, COLOR_PAIR["chart_text"])
+                self.addch(posy, posx, curses.ACS_VLINE, COLOR_PAIR["chart_text"])
             if posy >= sopen and posy < sclose:
                 # red body
-                self.addch(posy, posx, curses.ACS_CKBOARD, curses.A_BOLD + COLOR_PAIR["chart_down"])
+                self.addch(posy, posx, self.body_char, self.body_attr + COLOR_PAIR["chart_down"])
             if posy >= sclose and posy < sopen:
                 # green body
-                self.addch(posy, posx, curses.ACS_CKBOARD, curses.A_BOLD + COLOR_PAIR["chart_up"])
+                self.addch(posy, posx, self.body_char, self.body_attr + COLOR_PAIR["chart_up"])
             if posy >= sopen and posy >= sclose and posy < slow:
                 # lower wick
                 # pylint: disable=E1101
-                self.addch(posy, posx,
-                    curses.ACS_VLINE, COLOR_PAIR["chart_text"])
+                self.addch(posy, posx, curses.ACS_VLINE, COLOR_PAIR["chart_text"])
 
     def paint(self):
         typ = self.gox.config.get_string("goxtool", "display_right")
