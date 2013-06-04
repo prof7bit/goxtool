@@ -74,6 +74,7 @@ COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
 
 INI_DEFAULTS =  [["goxtool", "set_xterm_title", "True"]
                 ,["goxtool", "dont_truncate_logfile", "False"]
+                ,["goxtool", "show_orderbook_stats", "True"]
                 ,["goxtool", "orderbook_group", "0"]
                 ,["goxtool", "orderbook_sum_total", "False"]
                 ,["goxtool", "display_right", "history_chart"]
@@ -807,6 +808,10 @@ class WinStatus(Win):
         self.sort_currency_list_if_changed()
         self.win.bkgd(" ", COLOR_PAIR["status_text"])
         self.win.erase()
+
+        #
+        # first line
+        #
         line1 = "Market: %s%s | " % (cbase, cquote)
         line1 += "Account: "
         if len(self.sorted_currency_list):
@@ -819,17 +824,23 @@ class WinStatus(Win):
         else:
             line1 += "No info (yet)"
 
-        str_btc = locale.format('%d', self.gox.orderbook.total_ask, 1)
-        str_fiat = locale.format('%d', self.gox.orderbook.total_bid, 1)
-        if self.gox.orderbook.total_ask:
-            str_ratio = locale.format('%1.2f',
-                self.gox.orderbook.total_bid / self.gox.orderbook.total_ask, 1)
-        else:
-            str_ratio = "-"
+        #
+        # second line
+        #
+        line2 = ""
+        if self.gox.config.get_bool("goxtool", "show_orderbook_stats"):
+            str_btc = locale.format('%d', self.gox.orderbook.total_ask, 1)
+            str_fiat = locale.format('%d', self.gox.orderbook.total_bid, 1)
+            if self.gox.orderbook.total_ask:
+                str_ratio = locale.format('%1.2f',
+                    self.gox.orderbook.total_bid / self.gox.orderbook.total_ask, 1)
+            else:
+                str_ratio = "-"
 
-        line2 = "sum_bid: %s %s | " % (str_fiat, cquote)
-        line2 += "sum_ask: %s %s | " % (str_btc, cbase)
-        line2 += "ratio: %s %s/%s | " % (str_ratio, cquote, cbase)
+            line2 += "sum_bid: %s %s | " % (str_fiat, cquote)
+            line2 += "sum_ask: %s %s | " % (str_btc, cbase)
+            line2 += "ratio: %s %s/%s | " % (str_ratio, cquote, cbase)
+
         line2 += "o_lag: %s | " % self.order_lag_txt
         line2 += "s_lag: %.3f s" % (self.gox.socket_lag / 1e6)
         self.addstr(0, 0, line1, COLOR_PAIR["status_text"])
