@@ -1880,6 +1880,21 @@ class OrderBook(BaseObject):
 
     def _update_level_own_volume(self, typ, price, own_volume):
         """update the own_volume cache in the Level object at price"""
+
+        if price == 0:
+            # market orders have price == 0, we don't add them
+            # to the orderbook, own_volume is meant for limit orders.
+            # Also a price level of 0 makes no sense anyways, this
+            # would only insert empty rows at price=0 into the book
+            return
+
+        if (typ == "ask" and price <= self.bid) or \
+           (typ == "bid" and price >= self.ask):
+            # same as above for orders that would immediately fill
+            # because price is on the other side of the book.
+            # don't add these to the book too.
+            return
+
         (index, level) = self._find_level_or_insert_new(typ, price)
         if level.volume == 0 and own_volume == 0:
             if typ == "ask":
