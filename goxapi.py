@@ -1196,6 +1196,7 @@ class Gox(BaseObject):
         self.socket_lag = 0 # microseconds
         self.last_tid = 0
         self.count_submitted = 0  # number of submitted orders not yet acked
+        self.msg = {} # the incoming message that is currently processed
 
         self.config = config
         self.curr_base = config.get_string("gox", "base_currency")
@@ -1323,6 +1324,7 @@ class Gox(BaseObject):
         (str_json) = data
         handler = None
         msg = json.loads(str_json)
+        self.msg = msg
         if "op" in msg:
             try:
                 msg_op = msg["op"]
