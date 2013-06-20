@@ -75,6 +75,7 @@ COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
 INI_DEFAULTS =  [["goxtool", "set_xterm_title", "True"]
                 ,["goxtool", "dont_truncate_logfile", "False"]
                 ,["goxtool", "show_orderbook_stats", "True"]
+                ,["goxtool", "highlight_changes", "True"]
                 ,["goxtool", "orderbook_group", "0"]
                 ,["goxtool", "orderbook_sum_total", "False"]
                 ,["goxtool", "display_right", "history_chart"]
@@ -291,28 +292,36 @@ class WinOrderBook(Win):
     def paint(self):
         """paint the visible portion of the orderbook"""
 
-        def paint_row(pos, price, vol, ownvol, color):
+        def paint_row(pos, price, vol, ownvol, color, changevol):
             """paint a row in the orderbook (bid or ask)"""
+            if changevol > 0:
+                col2 = col_bid
+            elif changevol < 0:
+                col2 = col_ask
+            else:
+                col2 = col_vol
             self.addstr(pos, 0,  book.gox.quote2str(price), color)
-            self.addstr(pos, 12, book.gox.base2str(vol), col_vol)
+            self.addstr(pos, 12, book.gox.base2str(vol), col2)
             if ownvol:
                 self.addstr(pos, 28, book.gox.base2str(ownvol), col_own)
 
         self.win.bkgd(" ",  COLOR_PAIR["book_text"])
         self.win.erase()
+
+        gox = self.gox
+        book = gox.orderbook
+
         mid = self.height / 2
         col_bid = COLOR_PAIR["book_bid"]
         col_ask = COLOR_PAIR["book_ask"]
         col_vol = COLOR_PAIR["book_vol"]
         col_own = COLOR_PAIR["book_own"]
 
-        sum_total = self.gox.config.get_bool("goxtool", "orderbook_sum_total")
-        group = self.gox.config.get_float("goxtool", "orderbook_group")
-        group = self.gox.quote2int(group)
+        sum_total = gox.config.get_bool("goxtool", "orderbook_sum_total")
+        group = gox.config.get_float("goxtool", "orderbook_group")
+        group = gox.quote2int(group)
         if group == 0:
             group = 1
-
-        book = self.gox.orderbook
 
         #
         #
@@ -336,7 +345,7 @@ class WinOrderBook(Win):
                     else:
                         vol = level.volume
                     ownvol = level.own_volume
-                    bins.append([pos, price, vol, ownvol])
+                    bins.append([pos, price, vol, ownvol, 0])
                     pos -= 1
                     i += 1
 
@@ -345,7 +354,7 @@ class WinOrderBook(Win):
                 # first bin is exact lowest ask price
                 price = book.asks[0].price
                 vol = book.asks[0].volume
-                bins.append([pos, price, vol, 0])
+                bins.append([pos, price, vol, 0, 0])
                 prev_vol = vol
                 pos -= 1
 
@@ -356,9 +365,9 @@ class WinOrderBook(Win):
                     if vol > prev_vol:
                         # append only non-empty bins
                         if sum_total:
-                            bins.append([pos, bin_price, vol, 0])
+                            bins.append([pos, bin_price, vol, 0, 0])
                         else:
-                            bins.append([pos, bin_price, vol - prev_vol, 0])
+                            bins.append([pos, bin_price, vol - prev_vol, 0, 0])
                         prev_vol = vol
                         pos -= 1
                     bin_price += group
@@ -378,9 +387,21 @@ class WinOrderBook(Win):
                                 abin[3] += order.volume
                                 break
 
+            # mark the level where change took place (optional)
+            if gox.config.get_bool("goxtool", "highlight_changes"):
+                if book.last_change_type == "ask":
+                    change_bin_price = int(math.ceil(float(book.last_change_price) / group) * group)
+                    for abin in bins:
+                        if abin[1] == book.last_change_price:
+                            abin[4] = book.last_change_volume
+                            break
+                        if abin[1] == change_bin_price:
+                            abin[4] = book.last_change_volume
+                            break
+
             # now finally paint the asks
-            for pos, price, vol, ownvol in bins:
-                paint_row(pos, price, vol, ownvol, col_ask)
+            for pos, price, vol, ownvol, changevol in bins:
+                paint_row(pos, price, vol, ownvol, col_ask, changevol)
 
         #
         #
@@ -404,7 +425,7 @@ class WinOrderBook(Win):
                     else:
                         vol = level.volume
                     ownvol = level.own_volume
-                    bins.append([pos, price, vol, ownvol])
+                    bins.append([pos, price, vol, ownvol, 0])
                     prev_vol = vol
                     pos += 1
                     i += 1
@@ -414,7 +435,7 @@ class WinOrderBook(Win):
                 # first bin is exact lowest ask price
                 price = book.bids[0].price
                 vol = book.bids[0].volume
-                bins.append([pos, price, vol, 0])
+                bins.append([pos, price, vol, 0, 0])
                 prev_vol = vol
                 pos += 1
 
@@ -425,9 +446,9 @@ class WinOrderBook(Win):
                     if vol > prev_vol:
                         # append only non-empty bins
                         if sum_total:
-                            bins.append([pos, bin_price, vol, 0])
+                            bins.append([pos, bin_price, vol, 0, 0])
                         else:
-                            bins.append([pos, bin_price, vol - prev_vol, 0])
+                            bins.append([pos, bin_price, vol - prev_vol, 0, 0])
                         prev_vol = vol
                         pos += 1
                     bin_price -= group
@@ -447,9 +468,21 @@ class WinOrderBook(Win):
                                 abin[3] += order.volume
                                 break
 
+            # mark the level where change took place (optional)
+            if gox.config.get_bool("goxtool", "highlight_changes"):
+                if book.last_change_type == "bid":
+                    change_bin_price = int(math.floor(float(book.last_change_price) / group) * group)
+                    for abin in bins:
+                        if abin[1] == book.last_change_price:
+                            abin[4] = book.last_change_volume
+                            break
+                        if abin[1] == change_bin_price:
+                            abin[4] = book.last_change_volume
+                            break
+
             # now finally paint the bids
-            for pos, price, vol, ownvol in bins:
-                paint_row(pos, price, vol, ownvol, col_bid)
+            for pos, price, vol, ownvol, changevol in bins:
+                paint_row(pos, price, vol, ownvol, col_bid, changevol)
 
         # update the xterm title bar
         if self.gox.config.get_bool("goxtool", "set_xterm_title"):
@@ -480,8 +513,8 @@ class WinChart(Win):
         self.gox = gox
         self.pmin = 0
         self.pmax = 0
-        gox.history.signal_changed.connect(self.slot_hist_changed)
-        gox.orderbook.signal_changed.connect(self.slot_book_changed)
+        gox.history.signal_changed.connect(self.slot_changed)
+        gox.orderbook.signal_changed.connect(self.slot_changed)
 
         # some terminals do not support reverse video
         # so we cannot use reverse space for candle bodies
@@ -571,13 +604,19 @@ class WinChart(Win):
             BAR_LEFT_EDGE = 8
             FORMAT_STRING = "%7.2f"
 
-        def paint_depth(pos, price, vol, own, col_price):
+        def paint_depth(pos, price, vol, own, col_price, change):
             """paint one row of the depth chart"""
+            if change > 0:
+                col = col_bid
+            elif change < 0:
+                col = col_ask
+            else:
+                col = col_bar
             pricestr = FORMAT_STRING % self.gox.quote2float(price)
             self.addstr(pos, 0, pricestr, col_price)
             length = int(vol * mult_x)
             # pylint: disable=E1101
-            self.win.hline(pos, BAR_LEFT_EDGE, curses.ACS_CKBOARD, length, col_bar)
+            self.win.hline(pos, BAR_LEFT_EDGE, curses.ACS_CKBOARD, length, col)
             if own:
                 self.addstr(pos, length + BAR_LEFT_EDGE, "o", col_own)
 
@@ -618,10 +657,10 @@ class WinChart(Win):
             bin_vol, _bin_vol_quote = book.get_total_up_to(bin_price, True)
             if bin_vol > prev_vol:
                 if sum_total:
-                    bin_asks.append([pos, bin_price, bin_vol, 0])
+                    bin_asks.append([pos, bin_price, bin_vol, 0, 0])
                     max_vol_ask = max(bin_vol, max_vol_ask)
                 else:
-                    bin_asks.append([pos, bin_price, bin_vol - prev_vol, 0])
+                    bin_asks.append([pos, bin_price, bin_vol - prev_vol, 0, 0])
                     max_vol_ask = max(bin_vol - prev_vol, max_vol_ask)
                 prev_vol = bin_vol
                 pos -= 1
@@ -642,10 +681,10 @@ class WinChart(Win):
             bin_vol = self.gox.base2int(bin_vol_quote / book.bid)
             if bin_vol > prev_vol:
                 if sum_total:
-                    bin_bids.append([pos, bin_price, bin_vol, 0])
+                    bin_bids.append([pos, bin_price, bin_vol, 0, 0])
                     max_vol_bid = max(bin_vol, max_vol_bid)
                 else:
-                    bin_bids.append([pos, bin_price, bin_vol - prev_vol, 0])
+                    bin_bids.append([pos, bin_price, bin_vol - prev_vol, 0, 0])
                     max_vol_bid = max(bin_vol - prev_vol, max_vol_bid)
                 prev_vol = bin_vol
                 pos += 1
@@ -673,13 +712,29 @@ class WinChart(Win):
                         abin[3] += order.volume
                         break
 
+        # highlight the relative change (optional)
+        if self.gox.config.get_bool("goxtool", "highlight_changes"):
+            price = book.last_change_price
+            if book.last_change_type == "ask":
+                bin_price = int(math.ceil(float(price) / group) * group)
+                for abin in bin_asks:
+                    if abin[1] == bin_price:
+                        abin[4] = book.last_change_volume
+                        break
+            if book.last_change_type == "bid":
+                bin_price = int(math.floor(float(price) / group) * group)
+                for abin in bin_bids:
+                    if abin[1] == bin_price:
+                        abin[4] = book.last_change_volume
+                        break
+
         # paint the asks
-        for pos, price, vol, own in bin_asks:
-            paint_depth(pos, price, vol, own, col_ask)
+        for pos, price, vol, own, change in bin_asks:
+            paint_depth(pos, price, vol, own, col_ask, change)
 
         # paint the bids
-        for pos, price, vol, own in bin_bids:
-            paint_depth(pos, price, vol, own, col_bid)
+        for pos, price, vol, own, change in bin_bids:
+            paint_depth(pos, price, vol, own, col_bid, change)
 
     def paint_history_chart(self):
         """paint a history candlestick chart"""
@@ -756,12 +811,8 @@ class WinChart(Win):
                     )
                 labelprice += step
 
-    def slot_hist_changed(self, dummy_history, _data):
-        """Slot for history.signal_changed"""
-        self.do_paint()
-
-    def slot_book_changed(self, dummy_book, _data):
-        """Slot for orderbook.signal_changed"""
+    def slot_changed(self, _sender, _data):
+        """Slot for various needed signals"""
         self.do_paint()
 
 

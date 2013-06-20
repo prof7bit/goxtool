@@ -1664,6 +1664,10 @@ class OrderBook(BaseObject):
         self.total_bid = 0
         self.total_ask = 0
 
+        self.last_change_type = None # ("bid", "ask", None) this can be used
+        self.last_change_price = 0   # for highlighting relative changes
+        self.last_change_volume = 0  # of orderbook levels in goxtool.py
+
         self._valid_bid_cache = -1 # index of bid with valid _cache_total_vol
         self._valid_ask_cache = -1 # index of ask with valid _cache_total_vol
 
@@ -1672,11 +1676,12 @@ class OrderBook(BaseObject):
         (bid, ask) = data
         self.bid = bid
         self.ask = ask
-        toa, tob = self.total_ask, self.total_bid
+        self.last_change_type = None
+        self.last_change_price = 0
+        self.last_change_volume = 0
         self._repair_crossed_asks(ask)
         self._repair_crossed_bids(bid)
-        if (toa, tob) != (self.total_ask, self.total_bid):
-            self.signal_changed(self, None)
+        self.signal_changed(self, None)
 
     def slot_depth(self, dummy_sender, data):
         """Slot for signal_depth, process incoming depth message"""
@@ -1713,6 +1718,9 @@ class OrderBook(BaseObject):
                         if self.asks[0].volume <= 0:
                             voldiff -= self.asks[0].volume
                             self.asks.pop(0)
+                        self.last_change_type = "ask" #the asks have changed
+                        self.last_change_price = price
+                        self.last_change_volume = voldiff
                         self._update_total_ask(voldiff)
                 if len(self.asks):
                     self.ask = self.asks[0].price
@@ -1725,6 +1733,9 @@ class OrderBook(BaseObject):
                         if self.bids[0].volume <= 0:
                             voldiff -= self.bids[0].volume
                             self.bids.pop(0)
+                        self.last_change_type = "bid" #the bids have changed
+                        self.last_change_price = price
+                        self.last_change_volume = voldiff
                         self._update_total_bid(voldiff, price)
                 if len(self.bids):
                     self.bid = self.bids[0].price
@@ -1850,6 +1861,9 @@ class OrderBook(BaseObject):
             self.asks.pop(index)
         else:
             level.volume = total_vol
+        self.last_change_type = "ask"
+        self.last_change_price = price
+        self.last_change_volume = voldiff
         self._update_total_ask(voldiff)
         if len(self.asks):
             self.ask = self.asks[0].price
@@ -1865,6 +1879,9 @@ class OrderBook(BaseObject):
             self.bids.pop(index)
         else:
             level.volume = total_vol
+        self.last_change_type = "bid"
+        self.last_change_price = price
+        self.last_change_volume = voldiff
         self._update_total_bid(voldiff, price)
         if len(self.bids):
             self.bid = self.bids[0].price
