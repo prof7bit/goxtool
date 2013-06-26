@@ -6,17 +6,19 @@
   <meta http-equiv="content-type"
   content="application/xhtml+xml; charset=UTF-8" />
   <title>goxtool.py</title>
+  <meta name="generator" content="Amaya, see http://www.w3.org/Amaya/" />
   <link rel="stylesheet" href="styles.css" type="text/css" />
 </head>
 
-<body>
+<body xml:lang="en" lang="en">
 <h1>goxtool.py</h1>
 
 <p>goxtool.py is a trading client for the MtGox Bitcoin currency exchange. It
 allows you to watch live market data, to send or cancel orders or to run a
-fully automated trading bot. It is designed to work in the Linux console
-(sorry, no Windows yet), its written in Python and is using the (n)curses
-library to draw its user interface (it does <span
+fully automated trading bot. It is designed to work in the Linux console and it
+also natively works on Mac OS-X (<a name="Windows" id="Windows"
+href="cygwin.html">Windows users see here</a>), its written in Python and is
+using the (n)curses library to draw its user interface (it does <span
 style="font-weight: bold;">not</span> have a GTK or Qt interface), all it needs
 to run is a terminal (either locally or remote through ssh or putty). <br />
 <br />
@@ -52,7 +54,7 @@ account, just to make sure everything works.</p>
 created in the previous step and start goxtool.py:<br />
 </p>
 <pre>cd goxtool
-./goxtool.py</pre>
+ ./goxtool.py</pre>
 
 <p>Keyboard commands (only the ones useful in view-only mode, without Mt.Gox
 account):</p>
@@ -91,7 +93,7 @@ alternative would be <span class="codeword">socketio</span>, goxtool
 implements both protocols, the websocket server is currently more reliable.
 There is also an option to use the http API for trading commands, the default
 is to send all commands to the streaming socket, this affects only what happens
-when you buy/sell/cancel, it does not affect the streaming update of orderbook
+when you buy/sell/cancel, it does not affect the streaming update of order book
 and chart.</p>
 
 <h3>socketio or websocket? Which one is worse?</h3>
@@ -241,7 +243,7 @@ things:</p>
 class="codeword">slot_before_unload()</span> and reload it in <span
 class="codeword">__init__()</span>. Leave the <span
 class="codeword">__del__()</span> method alone, its only there to print a log
-mesage to debug proper unloading!<br />
+message to debug proper unloading!<br />
 <br />
 Please make sure that you can see the debug output from the <span
 class="codeword">__del__()</span> method in the log when the strategy is

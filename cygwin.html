@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+      "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+  <title>goxtool.py with cygwin</title>
+  <meta name="generator" content="Amaya, see http://www.w3.org/Amaya/" />
+  <link href="styles.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body xml:lang="en" lang="en">
+<h1>Installation of goxtool.py on Windows with cygwin</h1>
+
+<p>Since goxtool.py depends on ncurses (python-curses) and there exists no
+native version of ncurses for Windows it is necessary to use cygwin. Cygwin is
+a collection of tools which provide a Linux look and feel environment for
+Windows, it has some tools and libraries which are not natively available for
+windows and ncurses is one of them. Visit the cygwin website <a name="http"
+href="http://www.cygwin.com/" id="http">http://www.cygwin.com/</a> and download
+the cygwin installer <span class="codeword">setup.exe</span>.</p>
+
+<p>Cygwin has a package manager and you only need to install the packages that
+are needed to run this application. After you started setup.exe and selected
+install location (leave this at the default) and preferred download mirror you
+can select which packages to install. For installing goxtool you need these 3
+packages:</p>
+<ul>
+  <li><span class="codeword">python</span></li>
+  <li><span class="codeword">python-crypto</span></li>
+  <li><span class="codeword">git</span> (git is only used to install goxtool
+    and pull updates, its not strictly needed to run goxtool but you want to
+    install it anyways to be able to proceed with the steps below)</li>
+</ul>
+
+<p>Keep the setup.exe you downloaded around for later, if you decide to install
+even more packages or remove packages you use the same setup.exe tool to modify
+your cygwin installation. The following screen shots illustrate it on an old
+Windows XP system (I did not have any other Windows around here but it should
+be pretty much identical on any later version of Windows):</p>
+
+<p><img
+alt="Screenshot: Select python and python-crypto packages for installation"
+src="cygwin02.png" width="725" height="584" /></p>
+
+<p><img alt="Screenshot: Select git package for installation"
+src="cygwin01.png" width="731" height="588" /></p>
+
+<p>It will then download and install these packages along with a bunch of other
+packages that are needed dependencies. All the stuff will be installed into the
+<span class="codeword">c:\cygwin\</span> folder (just in case you wonder what
+all these unix path names like <span class="codeword">/usr/bin/whatever</span>
+mean on a Windows system: its all inside the cygwin folder which will emulate
+the root <span class="codeword">/</span> of a unix file system. There you will
+also later find your home folder (in the terminal it will be abbreviated with a
+tilde <span class="codeword">~</span> and its real physical location will be in
+<span class="codeword">c:\cygwin\home\yourname\</span> and goxtool will also be
+installed inside this folder).</p>
+
+<p>After successful installation you should find a shortcut to the cygwin
+terminal. Open the cygwin terminal and install goxtool:</p>
+<pre>git clone git://github.com/prof7bit/goxtool.git</pre>
+
+<p></p>
+
+<p>Now change into the goxtool folder <span
+class="codeword">~/goxtool</span></p>
+<pre>cd goxtool</pre>
+
+<p>and start it</p>
+<pre>python goxtool.py</pre>
+
+<p>Note that unlike described on the main goxtool website we unfortunately
+cannot start it with ./goxtool.py because it will not find the executable
+python2 from the shebang, there is only python on cygwin (which is the same) so
+we just manually invoke the python interpreter by calling its name. This also
+applies to all other commands from the main website or mentioned on the forums:
+</p>
+
+<p>Wherever it says: <span class="codeword">./goxtool.py --some-options
+--what-ever</span><br />
+simply replace it with: <span class="codeword">python goxtool.py --some-options
+--what-ever</span></p>
+
+<p>I have made a screen shot of the steps above:</p>
+
+<p><img alt="Screenshot: Install goxtool with git and then start it"
+src="cygwin03.png" width="800" /></p>
+
+<p>and now goxtool should start and can be used normally as described in the
+user manual (make sure the terminal windows is large enough so it won't do ugly
+line breaks. If everything is done right it will look like in the screen shot
+below and now you can continue with the instructions in the main user manual,
+just remember that when it cannot find python2 then start it with python like
+explained above.</p>
+
+<p><img alt="Screenshot: goxtool.py running in cygwin terminal"
+src="cygwin04.png" width="797" height="572" /></p>
+</body>
+</html>
