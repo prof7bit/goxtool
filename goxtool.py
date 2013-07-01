@@ -1119,10 +1119,11 @@ class TextBox():
         while self.editing:
             # pylint: disable=W0212
             with goxapi.Signal._lock:
+                curses.curs_set(2)
                 self.win.touchwin()
                 self.win.refresh()
-                curses.curs_set(2)
             time.sleep(0.1)
+        curses.curs_set(0)
 
 
 class NumberBox(TextBox):
