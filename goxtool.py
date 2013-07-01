@@ -53,16 +53,16 @@ COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["con_text_sell",  curses.COLOR_BLUE,    curses.COLOR_RED]
             ,["status_text",    curses.COLOR_BLUE,    curses.COLOR_CYAN]
 
-            ,["book_text",      curses.COLOR_BLACK,   curses.COLOR_BLUE]
+            ,["book_text",      curses.COLOR_BLACK,   curses.COLOR_CYAN]
             ,["book_bid",       curses.COLOR_BLACK,   curses.COLOR_GREEN]
             ,["book_ask",       curses.COLOR_BLACK,   curses.COLOR_RED]
             ,["book_own",       curses.COLOR_BLACK,   curses.COLOR_YELLOW]
-            ,["book_vol",       curses.COLOR_BLACK,   curses.COLOR_BLUE]
+            ,["book_vol",       curses.COLOR_BLACK,   curses.COLOR_CYAN]
 
             ,["chart_text",     curses.COLOR_BLACK,   curses.COLOR_WHITE]
             ,["chart_up",       curses.COLOR_BLACK,   curses.COLOR_GREEN]
             ,["chart_down",     curses.COLOR_BLACK,   curses.COLOR_RED]
-            ,["order_pending",  curses.COLOR_BLACK,   curses.COLOR_BLUE]
+            ,["order_pending",  curses.COLOR_BLACK,   curses.COLOR_CYAN]
 
             ,["dialog_text",     curses.COLOR_BLUE,   curses.COLOR_CYAN]
             ,["dialog_sel",      curses.COLOR_CYAN,   curses.COLOR_BLUE]
@@ -296,9 +296,9 @@ class WinOrderBook(Win):
         def paint_row(pos, price, vol, ownvol, color, changevol):
             """paint a row in the orderbook (bid or ask)"""
             if changevol > 0:
-                col2 = col_bid
+                col2 = col_bid + curses.A_BOLD
             elif changevol < 0:
-                col2 = col_ask
+                col2 = col_ask + curses.A_BOLD
             else:
                 col2 = col_vol
             self.addstr(pos, 0,  book.gox.quote2str(price), color)
@@ -608,9 +608,9 @@ class WinChart(Win):
         def paint_depth(pos, price, vol, own, col_price, change):
             """paint one row of the depth chart"""
             if change > 0:
-                col = col_bid
+                col = col_bid + curses.A_BOLD
             elif change < 0:
-                col = col_ask
+                col = col_ask + curses.A_BOLD
             else:
                 col = col_bar
             pricestr = FORMAT_STRING % self.gox.quote2float(price)
