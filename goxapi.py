@@ -193,8 +193,7 @@ class GoxConfig(SafeConfigParser):
         try:
             return self.get(sect, opt)
 
-        # pylint: disable=W0702
-        except:
+        except: # pylint: disable=W0702
             for (dsect, dopt, default) in self._DEFAULTS:
                 if dsect == sect and dopt == opt:
                     self._default(sect, opt, default)
@@ -289,8 +288,7 @@ class Signal():
                     func(sender, data)
                     sent = True
 
-                # pylint: disable=W0702
-                except:
+                except: # pylint: disable=W0702
                     errors.append(traceback.format_exc())
 
             for obj, funcs in self._methods.items():
@@ -299,8 +297,7 @@ class Signal():
                         func(obj, sender, data)
                         sent = True
 
-                    # pylint: disable=W0702
-                    except:
+                    except: # pylint: disable=W0702
                         errors.append(traceback.format_exc())
 
             for error in errors:
@@ -1183,6 +1180,8 @@ class Gox(BaseObject):
         self.signal_userorder       = Signal()
         self.signal_orderlag        = Signal()
 
+        self.signal_order_too_fast  = Signal() # don't use that
+
         self.strategies = weakref.WeakValueDictionary()
 
         # the following are not fired by gox itself but by the
@@ -1544,16 +1543,15 @@ class Gox(BaseObject):
         if "success" in msg and not msg["success"]:
             if msg["message"] == "Invalid call":
                 self._on_invalid_call(msg)
-                return
-            if msg["message"] == "Order not found":
+            elif msg["message"] == "Order not found":
                 self._on_order_not_found(msg)
-                return
-            if msg["message"] == "Order amount is too low":
+            elif msg["message"] == "Order amount is too low":
                 self._on_order_amount_too_low(msg)
-                return
-
-        # we should log this, helps with debugging
-        self.debug(msg)
+            elif "Too many orders placed" in msg["message"]:
+                self._on_too_many_orders(msg)
+            else:
+                # we should log this, helps with debugging
+                self.debug(msg)
 
     def _on_invalid_call(self, msg):
         """this comes as an op=remark message and is a strange mystery"""
@@ -1610,6 +1608,13 @@ class Gox(BaseObject):
         """we received an order_amount too low message."""
         self.debug("Server said: 'Order amount is too low'")
         self.count_submitted -= 1
+
+    def _on_too_many_orders(self, msg):
+        """server complains too many orders were placd too fast"""
+        self.debug("Server said: '%s" % msg["message"])
+        self.count_submitted -= 1
+        self.signal_order_too_fast(self, msg)
+
 
 class Level:
     """represents a level in the orderbook"""
@@ -1795,7 +1800,7 @@ class OrderBook(BaseObject):
         """Slot for signal_fulldepth, process received fulldepth data.
         This will clear the book and then re-initialize it from scratch."""
         (depth) = data
-        self.debug("### got full depth: updating orderbook...")
+        self.debug("### got full depth, updating orderbook...")
         self.bids = []
         self.asks = []
         self.total_ask = 0
