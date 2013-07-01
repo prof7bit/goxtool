@@ -132,6 +132,7 @@ class Win:
 
     def do_paint(self):
         """call this if you want the window to repaint itself"""
+        curses.curs_set(0)
         self.paint()
         self.done_paint()
 
@@ -1120,6 +1121,7 @@ class TextBox():
             with goxapi.Signal._lock:
                 self.win.touchwin()
                 self.win.refresh()
+                curses.curs_set(2)
             time.sleep(0.1)
 
 
