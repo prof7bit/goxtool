@@ -140,7 +140,6 @@ class Win:
         """update the sreen after paint operations, this will invoke all
         necessary stuff to refresh all (possibly overlapping) windows in
         the right order and then push it to the screen"""
-        self.win.touchwin()
         curses.panel.update_panels()
         curses.doupdate()
 
@@ -506,6 +505,8 @@ class WinOrderBook(Win):
         self.do_paint()
 
 
+TYPE_HISTORY = 1
+TYPE_ORDERBOOK = 2
 
 class WinChart(Win):
     """the chart window"""
@@ -514,8 +515,9 @@ class WinChart(Win):
         self.gox = gox
         self.pmin = 0
         self.pmax = 0
-        gox.history.signal_changed.connect(self.slot_changed)
-        gox.orderbook.signal_changed.connect(self.slot_changed)
+        self.change_type = None
+        gox.history.signal_changed.connect(self.slot_history_changed)
+        gox.orderbook.signal_changed.connect(self.slot_orderbook_changed)
 
         # some terminals do not support reverse video
         # so we cannot use reverse space for candle bodies
@@ -587,11 +589,11 @@ class WinChart(Win):
 
     def paint(self):
         typ = self.gox.config.get_string("goxtool", "display_right")
-        try:
-            {"history_chart": self.paint_history_chart
-            ,"depth_chart": self.paint_depth_chart
-            }[typ]()
-        except KeyError:
+        if typ == "history_chart":
+            self.paint_history_chart()
+        elif typ == "depth_chart":
+            self.paint_depth_chart()
+        else:
             self.paint_history_chart()
 
     def paint_depth_chart(self):
@@ -740,8 +742,13 @@ class WinChart(Win):
     def paint_history_chart(self):
         """paint a history candlestick chart"""
 
-        self.win.bkgd(" ",  COLOR_PAIR["chart_text"])
-        self.win.erase()
+        if self.change_type == TYPE_ORDERBOOK:
+            # erase only the rightmost column to redraw bid/ask and orders
+            # beause we won't redraw the chart, its only an orderbook change
+            self.win.vline(0, self.width - 1, " ", self.height, COLOR_PAIR["chart_text"])
+        else:
+            self.win.bkgd(" ",  COLOR_PAIR["chart_text"])
+            self.win.erase()
 
         hist = self.gox.history
         book = self.gox.orderbook
@@ -764,14 +771,34 @@ class WinChart(Win):
         if self.pmax == self.pmin:
             return
 
-        # paint the candles
-        posx = self.width - 2
-        index = 0
-        while index < hist.length() and posx >= 0:
-            candle = hist.candles[index]
-            self.paint_candle(posx, candle)
-            index += 1
-            posx -= 1
+        # paint the candlestick chart.
+        # We won't paint it if it was triggered from an orderbook change
+        # signal because that would be redundant and only waste CPU.
+        # In that case we only repaint the bid/ask markers (see below)
+        if self.change_type != TYPE_ORDERBOOK:
+            # paint the candles
+            posx = self.width - 2
+            index = 0
+            while index < hist.length() and posx >= 0:
+                candle = hist.candles[index]
+                self.paint_candle(posx, candle)
+                index += 1
+                posx -= 1
+
+            # paint the y-axis labels
+            posx = 0
+            step = self.get_optimal_step(4)
+            if step:
+                labelprice = int(self.pmin / step) * step
+                while not labelprice > self.pmax:
+                    posy = self.price_to_screen(labelprice)
+                    if posy < self.height - 1:
+                        self.addstr(
+                            posy, posx,
+                            self.gox.quote2str(labelprice),
+                            COLOR_PAIR["chart_text"]
+                        )
+                    labelprice += step
 
         # paint bid, ask, own orders
         posx = self.width - 1
@@ -797,24 +824,18 @@ class WinChart(Win):
             self.addch(posy, posx,
                 curses.ACS_HLINE, COLOR_PAIR["chart_down"])
 
-        # paint the y-axis labels
-        posx = 0
-        step = self.get_optimal_step(4)
-        if step:
-            labelprice = int(self.pmin / step) * step
-            while not labelprice > self.pmax:
-                posy = self.price_to_screen(labelprice)
-                if posy < self.height - 1:
-                    self.addstr(
-                        posy, posx,
-                        self.gox.quote2str(labelprice),
-                        COLOR_PAIR["chart_text"]
-                    )
-                labelprice += step
 
-    def slot_changed(self, _sender, _data):
-        """Slot for various needed signals"""
+    def slot_history_changed(self, _sender, _data):
+        """Slot for history changed"""
+        self.change_type = TYPE_HISTORY
         self.do_paint()
+        self.change_type = None
+
+    def slot_orderbook_changed(self, _sender, _data):
+        """Slot for orderbook changed"""
+        self.change_type = TYPE_ORDERBOOK
+        self.do_paint()
+        self.change_type = None
 
 
 class WinStatus(Win):
@@ -1426,7 +1447,6 @@ def main():
             bookwin = WinOrderBook(stdscr, gox)
             statuswin = WinStatus(stdscr, gox)
             chartwin = WinChart(stdscr, gox)
-
 
             strategy_manager = StrategyManager(gox, strat_mod_list)
 
