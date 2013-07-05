@@ -1749,6 +1749,7 @@ class OrderBook(BaseObject):
                         self.last_change_price = price
                         self.last_change_volume = voldiff
                         self._update_total_ask(voldiff)
+                        self._valid_ask_cache = -1
                 if len(self.asks):
                     self.ask = self.asks[0].price
 
@@ -1764,6 +1765,7 @@ class OrderBook(BaseObject):
                         self.last_change_price = price
                         self.last_change_volume = voldiff
                         self._update_total_bid(voldiff, price)
+                        self._valid_bid_cache = -1
                 if len(self.bids):
                     self.bid = self.bids[0].price
 

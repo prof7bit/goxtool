@@ -360,6 +360,9 @@ class WinOrderBook(Win):
 
                 # now all following bins
                 bin_price = int(math.ceil(float(price) / group) * group)
+                if bin_price == price:
+                    # first level was exact bin price already, skip to next bin
+                    bin_price += group
                 while pos >= 0:
                     vol, _vol_quote = book.get_total_up_to(bin_price, True)
                     if vol > prev_vol:
@@ -441,6 +444,9 @@ class WinOrderBook(Win):
 
                 # now all following bins
                 bin_price = int(math.floor(float(price) / group) * group)
+                if bin_price == price:
+                    # first level was exact bin price already, skip to next bin
+                    bin_price -= group
                 while pos < self.height:
                     vol, _vol_quote = book.get_total_up_to(bin_price, False)
                     if vol > prev_vol:
