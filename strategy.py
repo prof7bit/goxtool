@@ -79,8 +79,12 @@ class Strategy(goxapi.BaseObject):
         pass
 
     def slot_wallet_changed(self, gox, _dummy):
-        """this comes after the wallet has been updated. You can access the
-        new balance like so: gox.wallet["BTC"] or gox.wallet[gox.currency]"""
+        """this comes after the wallet has been updated. Access the new balances
+        like so: gox.wallet[gox.curr_base] or gox.wallet[gox.curr_quote] and use
+        gox.base2float() or gox.quote2float() if you need float values. You can
+        also access balances from other currenies like gox.wallet["JPY"] but it
+        is not guaranteed that they exist if you never had a balance in that
+        particular currency. Always test for their existence first."""
         pass
 
     def slot_history_changed(self, history, _dummy):
