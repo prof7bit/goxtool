@@ -1191,6 +1191,8 @@ class Gox(BaseObject):
 
         self._idkey      = ""
         self.wallet = {}
+        self.trade_fee = 0  # percent (float, for example 0.6 means 0.6%)
+        self.monthly_volume = 0 # BTC (satoshi int)
         self.order_lag = 0  # microseconds
         self.socket_lag = 0 # microseconds
         self.last_tid = 0
@@ -1380,11 +1382,13 @@ class Gox(BaseObject):
             self.debug("### got account info")
             gox_wallet = result["Wallets"]
             self.wallet = {}
+            self.monthly_volume = int(result["Monthly_Volume"]["value_int"])
+            self.trade_fee = float(result["Trade_Fee"])
             for currency in gox_wallet:
                 self.wallet[currency] = int(
                     gox_wallet[currency]["Balance"]["value_int"])
 
-            self.signal_wallet(self, ())
+            self.signal_wallet(self, None)
 
         elif reqid == "order_lag":
             lag_usec = result["lag"]
