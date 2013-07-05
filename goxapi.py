@@ -1896,7 +1896,7 @@ class OrderBook(BaseObject):
         self._update_total_ask(voldiff)
         if len(self.asks):
             self.ask = self.asks[0].price
-        if self._valid_ask_cache >= index:
+        if voldiff != 0 and self._valid_ask_cache >= index:
             self._valid_ask_cache = index - 1
 
     def _update_bids(self, price, total_vol):
@@ -1914,7 +1914,7 @@ class OrderBook(BaseObject):
         self._update_total_bid(voldiff, price)
         if len(self.bids):
             self.bid = self.bids[0].price
-        if self._valid_bid_cache >= index:
+        if voldiff != 0 and self._valid_bid_cache >= index:
             self._valid_bid_cache = index - 1
 
     def _update_total_ask(self, volume):
