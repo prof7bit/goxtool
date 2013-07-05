@@ -84,7 +84,10 @@ class Strategy(goxapi.BaseObject):
         gox.base2float() or gox.quote2float() if you need float values. You can
         also access balances from other currenies like gox.wallet["JPY"] but it
         is not guaranteed that they exist if you never had a balance in that
-        particular currency. Always test for their existence first."""
+        particular currency. Always test for their existence first. Note that
+        there will be multiple wallet signals after every trade. You can look
+        into gox.msg to inspect the original server message that triggered this
+        signal to filter the flood a little bit."""
         pass
 
     def slot_history_changed(self, history, _dummy):
