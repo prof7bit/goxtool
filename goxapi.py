@@ -773,14 +773,9 @@ class BaseClient(BaseObject):
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
-        if self.use_http():
-            self.enqueue_http_request("money/idkey", {}, "idkey")
-            self.enqueue_http_request("money/orders", {}, "orders")
-            self.enqueue_http_request("money/info", {}, "info")
-        else:
-            self.send_signed_call("private/idkey", {}, "idkey")
-            self.send_signed_call("private/orders", {}, "orders")
-            self.send_signed_call("private/info", {}, "info")
+        self.request_idkey()
+        self.request_orders()
+        self.request_info()
 
         if download_market_data:
             if self.config.get_bool("gox", "load_fulldepth"):
@@ -792,6 +787,27 @@ class BaseClient(BaseObject):
                     self.request_history()
 
         self._time_last_subscribed = time.time()
+
+    def request_info(self):
+        """request the private/info object"""
+        if self.use_http():
+            self.enqueue_http_request("money/info", {}, "info")
+        else:
+            self.send_signed_call("private/info", {}, "info")
+
+    def request_idkey(self):
+        """request the private/idkey object"""
+        if self.use_http():
+            self.enqueue_http_request("money/idkey", {}, "idkey")
+        else:
+            self.send_signed_call("private/idkey", {}, "idkey")
+
+    def request_orders(self):
+        """request the private/orders object"""
+        if self.use_http():
+            self.enqueue_http_request("money/orders", {}, "orders")
+        else:
+            self.send_signed_call("private/orders", {}, "orders")
 
     def _http_thread_func(self):
         """send queued http requests to the http API (only used when
@@ -1499,6 +1515,8 @@ class Gox(BaseObject):
                 self.base2str(volume),
                 self.quote2str(price)
             ))
+            # send another private/info request because the fee might have changed
+            self.client.request_info()
         else:
             self.debug("trade: %s: %s @ %s" % (
                 typ,
