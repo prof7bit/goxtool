@@ -354,6 +354,7 @@ class Timer(Signal):
         """cancel the timer"""
         self._canceled = True
         self._timer.cancel()
+        self._timer = None
 
 
 class Secret:
