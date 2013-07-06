@@ -326,19 +326,23 @@ class BaseObject():
 
 
 class Timer(Signal):
-    """a simple timer (used for stuff like keepalive)"""
+    """a simple timer (used for stuff like keepalive)."""
 
-    def __init__(self, interval):
+    def __init__(self, interval, one_shot=False):
         """create a new timer, interval is in seconds"""
         Signal.__init__(self)
+        self._one_shot = one_shot
+        self._canceled = False
         self._interval = interval
         self._timer = None
         self._start()
 
     def _fire(self):
         """fire the signal and restart it"""
-        self.__call__(self, None)
-        self._start()
+        if not self._canceled:
+            self.__call__(self, None)
+            if not (self._canceled or self._one_shot):
+                self._start()
 
     def _start(self):
         """start the timer"""
@@ -348,6 +352,7 @@ class Timer(Signal):
 
     def cancel(self):
         """cancel the timer"""
+        self._canceled = True
         self._timer.cancel()
 
 
@@ -626,6 +631,8 @@ class BaseClient(BaseObject):
         self._timer = Timer(60)
         self._timer.connect(self.slot_timer)
 
+        self._info_timer = None # used when delayed requesting private/info
+
         self.curr_base = curr_base
         self.curr_quote = curr_quote
 
@@ -787,6 +794,18 @@ class BaseClient(BaseObject):
                     self.request_history()
 
         self._time_last_subscribed = time.time()
+
+    def _slot_timer_info_later(self, _sender, _data):
+        """the slot for the request_info_later() timer signal"""
+        self.request_info()
+        self._info_timer = None
+
+    def request_info_later(self, delay):
+        """request the private/info in delay seconds from now"""
+        if self._info_timer:
+            self._info_timer.cancel()
+        self._info_timer = Timer(delay, True)
+        self._info_timer.connect(self._slot_timer_info_later)
 
     def request_info(self):
         """request the private/info object"""
@@ -1515,8 +1534,10 @@ class Gox(BaseObject):
                 self.base2str(volume),
                 self.quote2str(price)
             ))
-            # send another private/info request because the fee might have changed
-            self.client.request_info()
+            # send another private/info request because the fee might have
+            # changed. We request it a few seconds later because the server
+            # seems to need some time until the new values are available.
+            self.client.request_info_later(10)
         else:
             self.debug("trade: %s: %s @ %s" % (
                 typ,
