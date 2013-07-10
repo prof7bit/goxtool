@@ -1735,12 +1735,7 @@ class OrderBook(BaseObject):
     def slot_depth(self, dummy_sender, data):
         """Slot for signal_depth, process incoming depth message"""
         (typ, price, _voldiff, total_vol) = data
-        toa, tob = self.total_ask, self.total_bid
-        if typ == "ask":
-            self._update_asks(price, total_vol)
-        if typ == "bid":
-            self._update_bids(price, total_vol)
-        if (toa, tob) != (self.total_ask, self.total_bid):
+        if self._update_book(typ, price, total_vol):
             self.signal_changed(self, None)
 
     def slot_trade(self, dummy_sender, data):
@@ -1753,7 +1748,7 @@ class OrderBook(BaseObject):
         if own:
             # nothing special to do here (yet), there will also be
             # separate user_order messages to update my owns list
-            # and a copy of this trade message in the pblic channel
+            # and a copy of this trade message in the public channel
             pass
         else:
             # we update the orderbook. We could also wait for the depth
@@ -1903,41 +1898,43 @@ class OrderBook(BaseObject):
             self._valid_ask_cache = -1
             #self.debug("### repaired ask")
 
-    def _update_asks(self, price, total_vol):
-        """update volume at this price level, remove entire level
-        if empty after update, add new level if needed."""
-        (index, level) = self._find_level_or_insert_new("ask", price)
-        voldiff = total_vol - level.volume
+    def _update_book(self, typ, price, total_vol):
+        """update the bids or asks list, insert or remove level and
+        also update all other stuff that needs to be tracked such as
+        total volumes and invalidate the total volume cache index.
+        Return True if book has changed, return False otherwise"""
+        (lst, index, level) = self._find_level(typ, price)
         if total_vol == 0:
-            self.asks.pop(index)
+            if level == None:
+                return False
+            else:
+                voldiff = -level.volume
+                lst.pop(index)
         else:
-            level.volume = total_vol
-        self.last_change_type = "ask"
-        self.last_change_price = price
-        self.last_change_volume = voldiff
-        self._update_total_ask(voldiff)
-        if len(self.asks):
-            self.ask = self.asks[0].price
-        if voldiff != 0 and self._valid_ask_cache >= index:
-            self._valid_ask_cache = index - 1
+            if level == None:
+                voldiff = total_vol
+                level = Level(price, total_vol)
+                lst.insert(index, level)
+            else:
+                voldiff = total_vol - level.volume
+                level.volume = total_vol
 
-    def _update_bids(self, price, total_vol):
-        """update volume at this price level, remove entire level
-        if empty after update, add new level if needed."""
-        (index, level) = self._find_level_or_insert_new("bid", price)
-        voldiff = total_vol - level.volume
-        if total_vol == 0:
-            self.bids.pop(index)
-        else:
-            level.volume = total_vol
-        self.last_change_type = "bid"
+        # now keep all the other stuff in sync with it
+        self.last_change_type = typ
         self.last_change_price = price
         self.last_change_volume = voldiff
-        self._update_total_bid(voldiff, price)
-        if len(self.bids):
-            self.bid = self.bids[0].price
-        if voldiff != 0 and self._valid_bid_cache >= index:
-            self._valid_bid_cache = index - 1
+        if typ == "ask":
+            self._update_total_ask(voldiff)
+            if len(self.asks):
+                self.ask = self.asks[0].price
+            self._valid_ask_cache = max(self._valid_ask_cache, index - 1)
+        else:
+            self._update_total_bid(voldiff, price)
+            if len(self.bids):
+                self.bid = self.bids[0].price
+            self._valid_bid_cache = max(self._valid_bid_cache, index - 1)
+
+        return True
 
     def _update_total_ask(self, volume):
         """update total volume of base currency on the ask side"""
@@ -1974,9 +1971,12 @@ class OrderBook(BaseObject):
         else:
             level.own_volume = own_volume
 
-    def _find_level_or_insert_new(self, typ, price):
-        """find the Level() object in bids or asks or insert a new
-        Level() at the correct position. Returns tuple (index, level)"""
+    def _find_level(self, typ, price):
+        """find the level in the orderbook and return a triple
+        (list, index, level) where list is a reference to the list,
+        index is the index if its an exact match or the index of the next
+        element if it was not found (can be used for inserting) and level
+        is either a reference to the found level or None if not found."""
         lst = {"ask": self.asks, "bid": self.bids}[typ]
         comp = {"ask": lambda x, y: x < y, "bid": lambda x, y: x > y}[typ]
         low = 0
@@ -1991,21 +1991,29 @@ class OrderBook(BaseObject):
             elif comp(price, midval):
                 high = mid
             else:
-                return (mid, lst[mid])
+                return (lst, mid, lst[mid])
 
-        # not found, create new Level() and insert
+        # not found, return insertion point (index of next higher level)
+        return (lst, high, None)
+
+    def _find_level_or_insert_new(self, typ, price):
+        """find the Level() object in bids or asks or insert a new
+        Level() at the correct position. Returns tuple (index, level)"""
+        (lst, index, level) = self._find_level(typ, price)
+        if level:
+            return (index, level)
+
+        # no exact match found, create new Level() and insert
         level = Level(price, 0)
-        lst.insert(high, level)
+        lst.insert(index, level)
 
-        # invalidate the total volume cache above this level
+        # invalidate the total volume cache at and beyond this level
         if typ == "ask":
-            if self._valid_ask_cache >= high:
-                self._valid_ask_cache = high - 1
+            self._valid_ask_cache = max(self._valid_ask_cache, index - 1)
         else:
-            if self._valid_bid_cache >= high:
-                self._valid_bid_cache = high - 1
+            self._valid_bid_cache = max(self._valid_bid_cache, index - 1)
 
-        return (high, level)
+        return (index, level)
 
     def get_own_volume_at(self, price, typ=None):
         """returns the sum of the volume of own orders at a given price. This
