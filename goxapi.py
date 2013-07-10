@@ -1917,6 +1917,8 @@ class OrderBook(BaseObject):
                 lst.insert(index, level)
             else:
                 voldiff = total_vol - level.volume
+                if voldiff == 0:
+                    return False
                 level.volume = total_vol
 
         # now keep all the other stuff in sync with it
