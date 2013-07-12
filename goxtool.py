@@ -62,7 +62,7 @@ COLORS =    [["con_text",       curses.COLOR_BLUE,    curses.COLOR_CYAN]
             ,["chart_text",     curses.COLOR_BLACK,   curses.COLOR_WHITE]
             ,["chart_up",       curses.COLOR_BLACK,   curses.COLOR_GREEN]
             ,["chart_down",     curses.COLOR_BLACK,   curses.COLOR_RED]
-            ,["order_pending",  curses.COLOR_BLACK,   curses.COLOR_CYAN]
+            ,["order_pending",  curses.COLOR_BLACK,   curses.COLOR_RED]
 
             ,["dialog_text",     curses.COLOR_BLUE,   curses.COLOR_CYAN]
             ,["dialog_sel",      curses.COLOR_CYAN,   curses.COLOR_BLUE]
@@ -101,6 +101,46 @@ def init_colors():
             COLOR_PAIR[name] = 0
         index += 1
 
+def dump_all_stacks():
+    """dump a stack trace for all running threads for debugging purpose"""
+
+    def get_name(thread_id):
+        """return the human readable name that was assigned to a thread"""
+        for thread in threading.enumerate():
+            if thread.ident == thread_id:
+                return thread.name
+
+    ret = "\n# Full stack trace of all running threads:\n"
+    #pylint: disable=W0212
+    for thread_id, stack in sys._current_frames().items():
+        ret += "\n# %s (%s)\n" % (get_name(thread_id), thread_id)
+        for filename, lineno, name, line in traceback.extract_stack(stack):
+            ret += 'File: "%s", line %d, in %s\n' % (filename, lineno, name)
+            if line:
+                ret += "  %s\n" % (line.strip())
+    return ret
+
+def try_get_lock_or_break_open():
+    """this is an ugly hack to workaround possible deadlock problems.
+    It is used during shutdown to make sure we can properly exit even when
+    some slot is stuck (due to a programming error) and won't release the lock.
+    If we can't acquire it within 2 seconds we just break it open forcefully."""
+    #pylint: disable=W0212
+    time_end = time.time() + 2
+    while time.time() < time_end:
+        if goxapi.Signal._lock.acquire(False):
+            return
+        time.sleep(0.001)
+
+    # something keeps holding the lock, apparently some slot is stuck
+    # in an infinite loop. In order to be able to shut down anyways
+    # we just throw away that lock and replace it with a new one
+    lock = threading.RLock()
+    lock.acquire()
+    goxapi.Signal._lock = lock
+    print "### could not acquire signal lock, frozen slot somewhere?"
+    print "### please see the stacktrace log to determine the cause."
+
 class Win:
     """represents a curses window"""
     # pylint: disable=R0902
@@ -136,6 +176,7 @@ class Win:
         self.paint()
         self.done_paint()
 
+    # method could be a function - pylint: disable=R0201
     def done_paint(self):
         """update the sreen after paint operations, this will invoke all
         necessary stuff to refresh all (possibly overlapping) windows in
@@ -363,8 +404,8 @@ class WinOrderBook(Win):
                 if bin_price == price:
                     # first level was exact bin price already, skip to next bin
                     bin_price += group
-                while pos >= 0:
-                    vol, _vol_quote = book.get_total_up_to(bin_price, True)
+                while pos >= 0 and bin_price < book.asks[-1].price + group:
+                    vol, _vol_quote = book.get_total_up_to(bin_price, True)          ## 01 freeze
                     if vol > prev_vol:
                         # append only non-empty bins
                         if sum_total:
@@ -374,9 +415,6 @@ class WinOrderBook(Win):
                         prev_vol = vol
                         pos -= 1
                     bin_price += group
-                    if bin_price > book.asks[-1].price + group:
-                        # terminate eventually when there are no more asks
-                        break
 
                 # now add the own volumes to their bins
                 for order in book.owns:
@@ -447,7 +485,7 @@ class WinOrderBook(Win):
                 if bin_price == price:
                     # first level was exact bin price already, skip to next bin
                     bin_price -= group
-                while pos < self.height:
+                while pos < self.height and bin_price >= 0:
                     vol, _vol_quote = book.get_total_up_to(bin_price, False)
                     if vol > prev_vol:
                         # append only non-empty bins
@@ -458,9 +496,6 @@ class WinOrderBook(Win):
                         prev_vol = vol
                         pos += 1
                     bin_price -= group
-                    if bin_price < book.bids[-1].price - group:
-                        # terminate eventually when there are no more bids
-                        break
 
                 # now add the own volumes to their bins
                 for order in book.owns:
@@ -660,11 +695,11 @@ class WinChart(Win):
         #
         pos = mid - 1
         prev_vol = 0
-        highest_ask = book.asks[-1].price
         bin_price = int(math.ceil(float(book.asks[0].price) / group) * group)
-        while pos >= 0:
+        while pos >= 0 and bin_price < book.asks[-1].price + group:
             bin_vol, _bin_vol_quote = book.get_total_up_to(bin_price, True)
             if bin_vol > prev_vol:
+                # add only non-empty bins
                 if sum_total:
                     bin_asks.append([pos, bin_price, bin_vol, 0, 0])
                     max_vol_ask = max(bin_vol, max_vol_ask)
@@ -674,8 +709,6 @@ class WinChart(Win):
                 prev_vol = bin_vol
                 pos -= 1
             bin_price += group
-            if bin_price > highest_ask + group:
-                break
 
         #
         #
@@ -683,12 +716,12 @@ class WinChart(Win):
         #
         pos = mid + 1
         prev_vol = 0
-        lowest_bid = book.bids[-1].price
         bin_price = int(math.floor(float(book.bids[0].price) / group) * group)
-        while pos < self.height:
+        while pos < self.height and bin_price >= 0:
             _bin_vol_base, bin_vol_quote = book.get_total_up_to(bin_price, False)
             bin_vol = self.gox.base2int(bin_vol_quote / book.bid)
             if bin_vol > prev_vol:
+                # add only non-empty bins
                 if sum_total:
                     bin_bids.append([pos, bin_price, bin_vol, 0, 0])
                     max_vol_bid = max(bin_vol, max_vol_bid)
@@ -698,8 +731,6 @@ class WinChart(Win):
                 prev_vol = bin_vol
                 pos += 1
             bin_price -= group
-            if bin_price < min(lowest_bid - group, 0):
-                break
 
         max_vol_tot = max(max_vol_ask, max_vol_bid)
         if not max_vol_tot:
@@ -816,7 +847,7 @@ class WinChart(Win):
                         ord("o"), COLOR_PAIR["order_pending"])
                 else:
                     self.addch(posy, posx,
-                        ord("O"), COLOR_PAIR["chart_text"])
+                        ord("o"), COLOR_PAIR["book_own"])
 
         if self.is_in_range(book.bid):
             posy = self.price_to_screen(book.bid)
@@ -1112,7 +1143,7 @@ class TextBox():
         """enter te edit box modal loop"""
         self.win.move(0, 0)
         self.editing = True
-        threading.Thread(None, self.cursor_placement_thread).start()
+        goxapi.start_thread(self.cursor_placement_thread, "TextBox cursor placement")
         self.value = self.box.edit(self.validator)
         self.editing = False
         return self.result
@@ -1512,13 +1543,26 @@ def main():
                     gox.debug("key pressed: key=%i" % key)
 
         except KeyboardInterrupt:
-            gox.debug("got Ctrl+C, trying to shut down cleanly.")
-            gox.debug("Hint: did you know you can also exit with 'q'?")
+            # Ctrl+C has been pressed
+            pass
 
         except Exception:
             debug_tb.append(traceback.format_exc())
 
-        # Now trying to shutdown everything in an orderly manner.
+        # we are here because shutdown was requested.
+        #
+        # Before we do anything we dump stacktraces of all currently running
+        # threads to a separate logfile because this helps debugging freezes
+        # and deadlocks that might occur if things went totally wrong.
+        with open("goxtool.stacktrace.log", "w") as stacklog:
+            stacklog.write(dump_all_stacks())
+
+        # we need the signal lock to be able to shut down. And we cannot
+        # wait for any frozen slot to return, so try really hard to get
+        # the lock and if that fails then unlock it forcefully.
+        try_get_lock_or_break_open()
+
+        # Now trying to shutdown everything in an orderly manner.it in the
         # Since we are still inside curses but we don't know whether
         # the printhook or the logwriter was initialized properly already
         # or whether it crashed earlier we cannot print here and we also

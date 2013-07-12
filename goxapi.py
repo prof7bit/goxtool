@@ -122,11 +122,13 @@ def http_request(url, post=None, headers=None):
 
     return data
 
-def start_thread(thread_func):
+def start_thread(thread_func, name=None):
     """start a new thread to execute the supplied function"""
     thread = threading.Thread(None, thread_func)
     thread.daemon = True
     thread.start()
+    if name:
+        thread.name = name
     return thread
 
 def pretty_format(something):
@@ -654,8 +656,8 @@ class BaseClient(BaseObject):
 
     def start(self):
         """start the client"""
-        self._recv_thread = start_thread(self._recv_thread_func)
-        self._http_thread = start_thread(self._http_thread_func)
+        self._recv_thread = start_thread(self._recv_thread_func, "socket receive thread")
+        self._http_thread = start_thread(self._http_thread_func, "http thread")
 
     def stop(self):
         """stop the client"""
@@ -664,7 +666,6 @@ class BaseClient(BaseObject):
         if self.socket:
             self.debug("""closing socket""")
             self.socket.sock.close()
-        #self._recv_thread.join()
 
     def _try_send_raw(self, raw_data):
         """send raw data to the websocket or disconnect and close"""
@@ -725,7 +726,7 @@ class BaseClient(BaseObject):
             ))
             self.signal_fulldepth(self, (json.loads(fulldepth)))
 
-        start_thread(fulldepth_thread)
+        start_thread(fulldepth_thread, "http request full depth")
 
     def request_history(self):
         """request trading history"""
@@ -759,7 +760,7 @@ class BaseClient(BaseObject):
             if history["result"] == "success":
                 self.signal_fullhistory(self, history["data"])
 
-        start_thread(history_thread)
+        start_thread(history_thread, "http request trade history")
 
     def _recv_thread_func(self):
         """this will be executed as the main receiving thread, each type of
@@ -1929,12 +1930,12 @@ class OrderBook(BaseObject):
             self._update_total_ask(voldiff)
             if len(self.asks):
                 self.ask = self.asks[0].price
-            self._valid_ask_cache = max(self._valid_ask_cache, index - 1)
+            self._valid_ask_cache = min(self._valid_ask_cache, index - 1)
         else:
             self._update_total_bid(voldiff, price)
             if len(self.bids):
                 self.bid = self.bids[0].price
-            self._valid_bid_cache = max(self._valid_bid_cache, index - 1)
+            self._valid_bid_cache = min(self._valid_bid_cache, index - 1)
 
         return True
 
@@ -2011,9 +2012,9 @@ class OrderBook(BaseObject):
 
         # invalidate the total volume cache at and beyond this level
         if typ == "ask":
-            self._valid_ask_cache = max(self._valid_ask_cache, index - 1)
+            self._valid_ask_cache = min(self._valid_ask_cache, index - 1)
         else:
-            self._valid_bid_cache = max(self._valid_bid_cache, index - 1)
+            self._valid_bid_cache = min(self._valid_bid_cache, index - 1)
 
         return (index, level)
 
