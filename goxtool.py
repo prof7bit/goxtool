@@ -844,7 +844,7 @@ class WinChart(Win):
                 posy = self.price_to_screen(order.price)
                 if order.status == "pending":
                     self.addch(posy, posx,
-                        ord("o"), COLOR_PAIR["order_pending"])
+                        ord("p"), COLOR_PAIR["order_pending"])
                 else:
                     self.addch(posy, posx,
                         ord("o"), COLOR_PAIR["book_own"])
