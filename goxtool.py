@@ -173,8 +173,9 @@ class Win:
     def do_paint(self):
         """call this if you want the window to repaint itself"""
         curses.curs_set(0)
-        self.paint()
-        self.done_paint()
+        if self.win:
+            self.paint()
+            self.done_paint()
 
     # method could be a function - pylint: disable=R0201
     def done_paint(self):
@@ -234,11 +235,15 @@ class Win:
         """create the window. This will also be called on every resize,
         windows won't be moved, they will be deleted and recreated."""
         self.__calc_size()
-        self.win = curses.newwin(self.height, self.width, self.posy, self.posx)
-        self.panel = curses.panel.new_panel(self.win)
-        self.win.scrollok(True)
-        self.win.keypad(1)
-        self.do_paint()
+        try:
+            self.win = curses.newwin(self.height, self.width, self.posy, self.posx)
+            self.panel = curses.panel.new_panel(self.win)
+            self.win.scrollok(True)
+            self.win.keypad(1)
+            self.do_paint()
+        except:
+            self.win = None
+            self.panel = None
 
     def __calc_size(self):
         """calculate the default values for positionand size. By default
@@ -287,10 +292,11 @@ class WinConsole(Win):
 
     def write(self, txt):
         """write a line of text, scroll if needed"""
+        if not self.win:
+            return
+
         # This code would break if the format of
         # the log messages would ever change!
-
-
         if " tick:" in txt:
             if not self.gox.config.get_bool("goxtool", "show_ticker"):
                 return
@@ -1049,23 +1055,24 @@ class DlgListItems(Win):
 
     def modal(self):
         """run the modal getch-loop for this dialog"""
-        done = False
-        while not done:
-            key_pressed = self.win.getch()
-            if key_pressed in [27, ord("q"), curses.KEY_F10]:
-                done = True
-            if key_pressed == curses.KEY_DOWN:
-                self.down(1)
-            if key_pressed == curses.KEY_UP:
-                self.down(-1)
-            if key_pressed == curses.KEY_IC:
-                self.toggle_select()
-                self.down(1)
-
-            for key, func in self.dlg_keys:
-                if key == key_pressed:
-                    func()
+        if self.win:
+            done = False
+            while not done:
+                key_pressed = self.win.getch()
+                if key_pressed in [27, ord("q"), curses.KEY_F10]:
                     done = True
+                if key_pressed == curses.KEY_DOWN:
+                    self.down(1)
+                if key_pressed == curses.KEY_UP:
+                    self.down(-1)
+                if key_pressed == curses.KEY_IC:
+                    self.toggle_select()
+                    self.down(1)
+
+                for key, func in self.dlg_keys:
+                    if key == key_pressed:
+                        func()
+                        done = True
 
         # help the garbage collector clean up circular references
         # to make sure __del__() will be called to close the dialog
@@ -1237,39 +1244,40 @@ class DlgNewOrder(Win):
 
     def modal(self):
         """enter the modal getch() loop of this dialog"""
-        focus = 1
-        # next time I am going to use some higher level
-        # wrapper on top of curses, i promise...
-        while True:
-            if focus == 1:
-                res = self.edit_price.modal()
-                if res == -1:
-                    break # cancel entire dialog
-                if res in [10, curses.KEY_DOWN, curses.KEY_UP]:
-                    try:
-                        price_float = float(self.edit_price.value)
-                        focus = 2
-                    except ValueError:
-                        pass # can't move down until this is a valid number
+        if self.win:
+            focus = 1
+            # next time I am going to use some higher level
+            # wrapper on top of curses, i promise...
+            while True:
+                if focus == 1:
+                    res = self.edit_price.modal()
+                    if res == -1:
+                        break # cancel entire dialog
+                    if res in [10, curses.KEY_DOWN, curses.KEY_UP]:
+                        try:
+                            price_float = float(self.edit_price.value)
+                            focus = 2
+                        except ValueError:
+                            pass # can't move down until this is a valid number
 
-            if focus == 2:
-                res = self.edit_volume.modal()
-                if res == -1:
-                    break # cancel entire dialog
-                if res in [curses.KEY_UP, curses.KEY_DOWN]:
-                    focus = 1
-                if res == 10:
-                    try:
-                        volume_float = float(self.edit_volume.value)
-                        break # have both values now, can submit order
-                    except ValueError:
-                        pass # no float number, stay in this edit field
+                if focus == 2:
+                    res = self.edit_volume.modal()
+                    if res == -1:
+                        break # cancel entire dialog
+                    if res in [curses.KEY_UP, curses.KEY_DOWN]:
+                        focus = 1
+                    if res == 10:
+                        try:
+                            volume_float = float(self.edit_volume.value)
+                            break # have both values now, can submit order
+                        except ValueError:
+                            pass # no float number, stay in this edit field
 
-        if res == -1:
-            #user has hit f10. just end here, do nothing
-            pass
-        if res == 10:
-            self.do_submit(price_float, volume_float)
+            if res == -1:
+                #user has hit f10. just end here, do nothing
+                pass
+            if res == 10:
+                self.do_submit(price_float, volume_float)
 
         # make sure all cyclic references are garbage collected or
         # otherwise the curses window won't disappear
@@ -1489,7 +1497,7 @@ def main():
 
             gox.start()
             while True:
-                key = conwin.win.getch()
+                key = stdscr.getch()
                 if key == ord("q"):
                     break
                 elif key == curses.KEY_F4:
