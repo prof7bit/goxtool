@@ -538,11 +538,14 @@ class History(BaseObject):
     def __init__(self, gox, timeframe):
         BaseObject.__init__(self)
 
-        self.signal_changed = Signal()
+        self.signal_fullhistory_processed = Signal()
+        self.signal_changed               = Signal()
 
         self.gox = gox
         self.candles = []
         self.timeframe = timeframe
+
+        self.ready_history = False
 
         gox.signal_trade.connect(self.slot_trade)
         gox.signal_fullhistory.connect(self.slot_fullhistory)
@@ -610,6 +613,8 @@ class History(BaseObject):
         self._add_candle(new_candle)
         count_added += 1
         self.debug("### got %d updated candle(s)" % count_added)
+        self.ready_history = True
+        self.signal_fullhistory_processed(self, None)
         self.signal_changed(self, (self.length()))
 
     def last_candle(self):
@@ -633,9 +638,11 @@ class BaseClient(BaseObject):
     def __init__(self, curr_base, curr_quote, secret, config):
         BaseObject.__init__(self)
 
-        self.signal_recv        = Signal()
-        self.signal_fulldepth   = Signal()
-        self.signal_fullhistory = Signal()
+        self.signal_recv         = Signal()
+        self.signal_fulldepth    = Signal()
+        self.signal_fullhistory  = Signal()
+        self.signal_connected    = Signal()
+        self.signal_disconnected = Signal()
 
         self._timer = Timer(60)
         self._timer.connect(self.slot_timer)
@@ -1041,8 +1048,8 @@ class WebsocketClient(BaseClient):
                 self.connected = True
                 self.debug("connected, subscribing needed channels")
                 self.channel_subscribe()
-
                 self.debug("waiting for data...")
+                self.signal_connected(self, None)
                 while not self._terminating: #loop1 (read messages)
                     str_json = self.socket.recv()
                     self._time_last_received = time.time()
@@ -1051,6 +1058,7 @@ class WebsocketClient(BaseClient):
 
             except Exception as exc:
                 self.connected = False
+                self.signal_disconnected(self, None)
                 if not self._terminating:
                     self.debug(exc.__class__.__name__, exc,
                         "reconnecting in %i seconds..." % reconnect_time)
@@ -1168,6 +1176,7 @@ class SocketIOClient(BaseClient):
                 self.channel_subscribe()
 
                 self.debug("waiting for data...")
+                self.signal_connected(self, None)
                 while not self._terminating: #loop1 (read messages)
                     msg = self.socket.recv()
                     self._time_last_received = time.time()
@@ -1183,6 +1192,7 @@ class SocketIOClient(BaseClient):
 
             except Exception as exc:
                 self.connected = False
+                self.signal_disconnected(self, None)
                 if not self._terminating:
                     self.debug(exc.__class__.__name__, exc, \
                         "reconnecting in 1 seconds...")
@@ -1222,6 +1232,8 @@ class Gox(BaseObject):
         self.signal_wallet          = Signal()
         self.signal_userorder       = Signal()
         self.signal_orderlag        = Signal()
+        self.signal_disconnected    = Signal() # socket connection lost
+        self.signal_ready           = Signal() # connected and fully initialized
 
         self.signal_order_too_fast  = Signal() # don't use that
 
@@ -1241,6 +1253,13 @@ class Gox(BaseObject):
         self.last_tid = 0
         self.count_submitted = 0  # number of submitted orders not yet acked
         self.msg = {} # the incoming message that is currently processed
+
+        # the following will be set to true once the information
+        # has been received after connect, once all thes flags are
+        # true it will emit the signal_connected.
+        self.ready_idkey = False
+        self.ready_info = False
+        self._was_disconnected = True
 
         self.config = config
         self.curr_base = config.get_string("gox", "base_currency")
@@ -1280,6 +1299,8 @@ class Gox(BaseObject):
             self.client = SocketIOClient(self.curr_base, self.curr_quote, secret, config)
 
         self.client.signal_debug.connect(self.signal_debug)
+        self.client.signal_disconnected.connect(self.slot_disconnected)
+        self.client.signal_connected.connect(self.slot_client_connected)
         self.client.signal_recv.connect(self.slot_recv)
         self.client.signal_fulldepth.connect(self.signal_fulldepth)
         self.client.signal_fullhistory.connect(self.signal_fullhistory)
@@ -1288,6 +1309,9 @@ class Gox(BaseObject):
         self.timer_poll.connect(self.slot_poll)
 
         self.history.signal_changed.connect(self.slot_history_changed)
+        self.history.signal_fullhistory_processed.connect(self.slot_fullhistory_processed)
+        self.orderbook.signal_fulldepth_processed.connect(self.slot_fulldepth_processed)
+        self.orderbook.signal_owns_initialized.connect(self.slot_owns_initialized)
 
     def start(self):
         """connect to MtGox and start receiving events."""
@@ -1361,6 +1385,50 @@ class Gox(BaseObject):
         """convert quote currency values from float to mtgox integer"""
         return int(round(float_number * self.mult_quote))
 
+    def check_connect_ready(self):
+        """check if everything that is needed has been downloaded
+        and emit the connect signal if everything is ready"""
+        need_no_account = not self.client.secret.know_secret()
+        need_no_depth = not self.config.get_bool("gox", "load_fulldepth")
+        need_no_history = not self.config.get_bool("gox", "load_history")
+        need_no_depth = need_no_depth or FORCE_NO_FULLDEPTH
+        need_no_history = need_no_history or FORCE_NO_HISTORY
+        ready_account = \
+            self.ready_idkey and self.ready_info and self.orderbook.ready_owns
+        if ready_account or need_no_account:
+            if self.orderbook.ready_depth or need_no_depth:
+                if self.history.ready_history or need_no_history:
+                    if self._was_disconnected:
+                        self.signal_ready(self, None)
+                        self._was_disconnected = False
+
+    def slot_client_connected(self, _sender, _data):
+        """connected to the client"""
+        self.check_connect_ready()
+
+    def slot_fulldepth_processed(self, _sender, _data):
+        """connected to the orderbook"""
+        self.check_connect_ready()
+
+    def slot_fullhistory_processed(self, _sender, _data):
+        """connected to the history"""
+        self.check_connect_ready()
+
+    def slot_owns_initialized(self, _sender, _data):
+        """connected to the orderbook"""
+        self.check_connect_ready()
+
+    def slot_disconnected(self, _sender, _data):
+        """this slot is connected to the client object, all it currently
+        does is to emit a disconnected signal itself"""
+        self.ready_idkey = False
+        self.ready_info = False
+        self.orderbook.ready_owns = False
+        self.orderbook.ready_depth = False
+        self.history.ready_history = False
+        self._was_disconnected = True
+        self.signal_disconnected(self, None)
+
     def slot_recv(self, dummy_sender, data):
         """Slot for signal_recv, handle new incoming JSON message. Decode the
         JSON string into a Python object and dispatch it to the method that
@@ -1413,6 +1481,8 @@ class Gox(BaseObject):
             self.debug("### got key, subscribing to account messages")
             self._idkey = result
             self.client.send(json.dumps({"op":"mtgox.subscribe", "key":result}))
+            self.ready_idkey = True
+            self.check_connect_ready()
 
         elif reqid == "orders":
             self.debug("### got own order list")
@@ -1432,6 +1502,8 @@ class Gox(BaseObject):
                     gox_wallet[currency]["Balance"]["value_int"])
 
             self.signal_wallet(self, None)
+            self.ready_info = True
+            self.check_connect_ready()
 
         elif reqid == "order_lag":
             lag_usec = result["lag"]
@@ -1704,6 +1776,7 @@ class OrderBook(BaseObject):
 
         self.signal_changed = Signal()
         self.signal_fulldepth_processed = Signal()
+        self.signal_owns_initialized = Signal()
         self.signal_owns_changed = Signal()
 
         gox.signal_ticker.connect(self.slot_ticker)
@@ -1720,6 +1793,9 @@ class OrderBook(BaseObject):
         self.ask = 0
         self.total_bid = 0
         self.total_ask = 0
+
+        self.ready_depth = False
+        self.ready_owns = False
 
         self.last_change_type = None # ("bid", "ask", None) this can be used
         self.last_change_price = 0   # for highlighting relative changes
@@ -1880,6 +1956,7 @@ class OrderBook(BaseObject):
 
         self._valid_ask_cache = -1
         self._valid_bid_cache = -1
+        self.ready_depth = True
         self.signal_fulldepth_processed(self, None)
         self.signal_changed(self, None)
 
@@ -2129,7 +2206,9 @@ class OrderBook(BaseObject):
                         order["status"]
                     ))
 
+        self.ready_owns = True
         self.signal_changed(self, None)
+        self.signal_owns_initialized(self, None)
         self.signal_owns_changed(self, None)
 
     def add_own(self, order):
