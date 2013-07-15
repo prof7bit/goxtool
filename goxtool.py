@@ -241,7 +241,7 @@ class Win:
             self.win.scrollok(True)
             self.win.keypad(1)
             self.do_paint()
-        except:
+        except Exception:
             self.win = None
             self.panel = None
 
