@@ -1569,7 +1569,8 @@ class Gox(BaseObject):
                     (price, volume, typ, oid, status))
 
         else: # removed (filled or canceled)
-            self.signal_userorder(self, (0, 0, "", oid, "removed"))
+            if self.orderbook.have_own_oid(oid):
+                self.signal_userorder(self, (0, 0, "", oid, "removed"))
 
     def _on_op_private_wallet(self, msg):
         """handle incoming wallet message (op=private, private=wallet)"""
