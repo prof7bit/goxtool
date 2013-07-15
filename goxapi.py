@@ -95,7 +95,13 @@ def float2int(value_float, currency):
         return int(round(value_float * 100000))
 
 def http_request(url, post=None, headers=None):
-    """request data from the HTTP API, returns a string"""
+    """request data from the HTTP API, returns the response a string. If a
+    http error occurs it will *not* raise an exception, instead it will
+    return the content of the error document. This is because  MtGox will
+    send 5xx http status codes even if application level errors occur
+    (such as canceling the same order twice or things like that) and the
+    real error message will be in the json that is returned, so the return
+    document is always much more interesting than the http status code."""
 
     def read_gzipped(response):
         """read data from the response object,

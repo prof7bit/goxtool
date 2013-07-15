@@ -1596,8 +1596,8 @@ def main():
         except Exception:
             debug_tb.append(traceback.format_exc())
 
-        # Curses loop ends here, we must reach this point under all circumstances.
-        # Now curses will uninitialize itself and restore the terminal.
+        # curses_loop() ends here, we must reach this point under all circumstances.
+        # Now curses will restore the terminal back to cooked (normal) mode.
 
 
     # Here it begins. The very first thing is to always set US or GB locale
@@ -1652,7 +1652,15 @@ def main():
 
         # if its ok then we can finally enter the curses main loop
         if secret.prompt_decrypt() != secret.S_FAIL_FATAL:
+
+            ###
+            #
+            # now going to enter cbreak mode and start the curses loop...
             curses.wrapper(curses_loop)
+            # curses ended, terminal is back in normal (cooked) mode
+            #
+            ###
+
             if len(debug_tb):
                 print "\n\n*** error(s) in curses_loop() that caused unclean shutdown:\n"
                 for trb in debug_tb:
