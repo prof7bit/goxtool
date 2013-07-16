@@ -1523,8 +1523,8 @@ class Gox(BaseObject):
             volume = int(parts[3])
             oid = result
             self.debug("### got ack for order/add:", typ, price, volume, oid)
-            self.orderbook.add_own(Order(price, volume, typ, oid, "pending"))
             self.count_submitted -= 1
+            self.orderbook.add_own(Order(price, volume, typ, oid, "pending"))
 
         elif "order_cancel:" in reqid:
             # cancel request has been acked but we won't remove it from our
@@ -1774,10 +1774,14 @@ class OrderBook(BaseObject):
         BaseObject.__init__(self)
         self.gox = gox
 
-        self.signal_changed = Signal()
-        self.signal_fulldepth_processed = Signal()
-        self.signal_owns_initialized = Signal()
-        self.signal_owns_changed = Signal()
+        self.signal_changed             = Signal()  # orderbook state has changed
+        self.signal_fulldepth_processed = Signal()  # fulldepth download is complete
+        self.signal_owns_initialized    = Signal()  # own order list has been initialized
+        self.signal_owns_changed        = Signal()  # owns list has chenged
+        self.signal_own_added           = Signal()  # order was added (pending)
+        self.signal_own_removed         = Signal()  # order has been removed
+        self.signal_own_opened          = Signal()  # order status went to "open"
+        self.signal_own_volume          = Signal()  # order volume changed (partial fill)
 
         gox.signal_ticker.connect(self.slot_ticker)
         gox.signal_depth.connect(self.slot_depth)
@@ -1875,6 +1879,10 @@ class OrderBook(BaseObject):
     def slot_user_order(self, dummy_sender, data):
         """Slot for signal_userorder, process incoming user_order mesage"""
         (price, volume, typ, oid, status) = data
+        found   = False
+        removed = False # was the order removed?
+        opened  = False # did the order change from 'post-pending' to 'open'"?
+        voldiff = 0     # did the order volume change (partial fill)
         if status == "removed":
             for i in range(len(self.owns)):
                 if self.owns[i].oid == oid:
@@ -1893,9 +1901,9 @@ class OrderBook(BaseObject):
                         order.price,
                         self.get_own_volume_at(order.price, order.typ)
                     )
+                    removed = True
                     break
         else:
-            found = False
             for order in self.owns:
                 if order.oid == oid:
                     found = True
@@ -1903,21 +1911,42 @@ class OrderBook(BaseObject):
                         "### updating order %s " % oid,
                         "volume:", self.gox.base2str(volume),
                         "status:", status)
+                    voldiff = volume - order.volume
+                    opened = (order.status == "post-pending" and status == "open")
                     order.volume = volume
                     order.status = status
                     break
 
             if not found:
-                self.debug(
-                    "### adding order %s " % oid,
-                    "volume:", self.gox.base2str(volume),
-                    "status:", status)
-                self.owns.append(Order(price, volume, typ, oid, status))
+                # This canhappen if we added the order with a different
+                # application or the gox server sent the user_order message
+                # before the reply to "order/add" (this can happen because
+                # actually there is no guarantee which one arrives first).
+                # We will treat this like a reply to "order/add"
+                self.add_own(Order(price, volume, typ, oid, status))
+
+                # The add_own() method has handled everything that was needed
+                # for new orders and also emitted all signals already, we
+                # can immediately return here because the job is done.
+                return
 
             # update level own volume cache
             self._update_level_own_volume(
                 typ, price, self.get_own_volume_at(price, typ))
 
+        # We try to help the strategy with tracking the orders as good
+        # as we can by sending different signals for different events.
+        if removed:
+            user_order = self.gox.msg["user_order"]
+            if "reason" in user_order:
+                reason = user_order["reason"]
+            else:
+                reason = ""
+            self.signal_own_removed(self, (order, reason))
+        if opened:
+            self.signal_own_opened(self, (order))
+        if voldiff:
+            self.signal_own_volume(self, (order, voldiff))
         self.signal_changed(self, None)
         self.signal_owns_changed(self, None)
 
@@ -2212,23 +2241,27 @@ class OrderBook(BaseObject):
         self.signal_owns_changed(self, None)
 
     def add_own(self, order):
-        """called by gox when a new order has been acked
-        after it has been submitted. This is a separate method because
-        we need to fire the *_changed signals when this happens"""
-        self._add_own(order)
-        self.signal_changed(self, None)
-        self.signal_owns_changed(self, None)
+        """called by gox when a new order has been acked after it has been
+        submitted or after a receiving a user_order message for a new order.
+        This is a separate method from _add_own because we additionally need
+        to fire the a bunch of signals when this happens"""
+        if not self.have_own_oid(order.oid):
+            self.debug("### adding order:",
+                order.typ, order.price, order.volume, order.oid)
+            self._add_own(order)
+            self.signal_own_added(self, (order))
+            self.signal_changed(self, None)
+            self.signal_owns_changed(self, None)
 
     def _add_own(self, order):
         """add order to the list of own orders. This method is used during
-        initial download of complete order list and also when a new order
-        is inserted after receiving the ack (after order/add)."""
+        initial download of complete order list."""
         if not self.have_own_oid(order.oid):
             self.owns.append(order)
 
-        # update own volume in that level:
-        self._update_level_own_volume(
-            order.typ,
-            order.price,
-            self.get_own_volume_at(order.price, order.typ)
-        )
+            # update own volume in that level:
+            self._update_level_own_volume(
+                order.typ,
+                order.price,
+                self.get_own_volume_at(order.price, order.typ)
+            )
