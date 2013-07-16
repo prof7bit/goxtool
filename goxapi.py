@@ -17,7 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913,R0914,R0915,W0703
+# pylint: disable=C0302,C0301,R0902,R0903,R0912,R0913,R0914,R0915,W0703,W0105
 
 import sys
 PY_VERSION = sys.version_info
@@ -1770,24 +1770,80 @@ class OrderBook(BaseObject):
 
     def __init__(self, gox):
         """create a new empty orderbook and associate it with its
-        Gox instance"""
+        Gox instance, initialize it and connect its slots to gox"""
         BaseObject.__init__(self)
         self.gox = gox
 
-        self.signal_changed             = Signal()  # orderbook state has changed
-        self.signal_fulldepth_processed = Signal()  # fulldepth download is complete
-        self.signal_owns_initialized    = Signal()  # own order list has been initialized
-        self.signal_owns_changed        = Signal()  # owns list has chenged
-        self.signal_own_added           = Signal()  # order was added (pending)
-        self.signal_own_removed         = Signal()  # order has been removed
-        self.signal_own_opened          = Signal()  # order status went to "open"
-        self.signal_own_volume          = Signal()  # order volume changed (partial fill)
+        self.signal_changed             = Signal()
+        """orderbook state has changed
+        param: None
+        an update to the state of the orderbook happened, this is emitted very
+        often, it happens after every depth message, after every trade and
+        also after every user_order message. This signal is for example used
+        in goxtool.py to repaint the user interface of the orderbook window."""
 
-        gox.signal_ticker.connect(self.slot_ticker)
-        gox.signal_depth.connect(self.slot_depth)
-        gox.signal_trade.connect(self.slot_trade)
-        gox.signal_userorder.connect(self.slot_user_order)
-        gox.signal_fulldepth.connect(self.slot_fulldepth)
+        self.signal_fulldepth_processed = Signal()
+        """fulldepth download is complete
+        param: None
+        The orderbook (fulldepth) has been downloaded from the server.
+        This happens soon after connect."""
+
+        self.signal_owns_initialized    = Signal()
+        """own order list has been initialized
+        param: None
+        The owns list has been initialized. This happens soon after connect
+        after it has downloaded the authoritative list of pending and open
+        orders. This will also happen if it reinitialized after lost connection."""
+
+        self.signal_owns_changed        = Signal()
+        """owns list has changed
+        param: None
+        an update to the owns list has happened, this can be order added,
+        removed or filled, status or volume of an order changed. For specific
+        changes to individual orders see the additional signals below."""
+
+        self.signal_own_added           = Signal()
+        """order was added
+        param: (order)
+        order is a reference to the Order() instance
+        This signal will be emitted whenever a new order is added to
+        the owns list. Normally this happens soon after buy() or sell(),
+        initially the order will have the status "pending". It will also
+        be emitted for a market order but in this case it will immediately
+        be followed by a removed signal for the same order. If it is a
+        limit order then a while (order lag) later there will also be a
+        signal_own_opened (see below) to indicate that the status went
+        from pending to open."""
+
+        self.signal_own_removed         = Signal()
+        """order has been removed
+        param: (order, reason)
+        order is a reference to the Order() instance
+        reason is a string that can have the following values:
+          "" (empty string) order was a market order
+          "requested" order was canceled
+          "completed_passive" order was filled
+        Bots will probably be interested in this signal and especially
+        the reason "completed_passive" because this is a reliable way to
+        determine that a trade has happened and the order is completely
+        filled because the trade signal alone won't carry this information"""
+
+        self.signal_own_opened          = Signal()
+        """order status went to "open"
+        param: (order)
+        order is a reference to the Order() instance
+        when the order changes from 'post-pending' to 'open' then this
+        signal will be emitted. It won't be emitted for market orders"""
+
+        self.signal_own_volume          = Signal()
+        """order volume changed (partial fill)
+        param: (order, voldiff)
+        order is a reference to the Order() instance
+        voldiff is the differenc in volume, so for a partial or a complete fill
+        it would contain a negative value (integer number of satoshi) of the
+        difference between now and the previous volume. This signal is always
+        emitted when a limit order is filled, even if it is not a partial fill.
+        It is not emitted for market orders."""
 
         self.bids = [] # list of Level(), lowest ask first
         self.asks = [] # list of Level(), highest bid first
@@ -1805,8 +1861,14 @@ class OrderBook(BaseObject):
         self.last_change_price = 0   # for highlighting relative changes
         self.last_change_volume = 0  # of orderbook levels in goxtool.py
 
-        self._valid_bid_cache = -1 # index of bid with valid _cache_total_vol
-        self._valid_ask_cache = -1 # index of ask with valid _cache_total_vol
+        self._valid_bid_cache = -1   # index of bid with valid _cache_total_vol
+        self._valid_ask_cache = -1   # index of ask with valid _cache_total_vol
+
+        gox.signal_ticker.connect(self.slot_ticker)
+        gox.signal_depth.connect(self.slot_depth)
+        gox.signal_trade.connect(self.slot_trade)
+        gox.signal_userorder.connect(self.slot_user_order)
+        gox.signal_fulldepth.connect(self.slot_fulldepth)
 
     def slot_ticker(self, dummy_sender, data):
         """Slot for signal_ticker, incoming ticker message"""
