@@ -1629,20 +1629,48 @@ class Gox(BaseObject):
 
     def _on_op_private_user_order(self, msg):
         """handle incoming user_order message (op=private, private=user_order)"""
+        self.debug(pretty_format(msg))
         order = msg["user_order"]
         oid = order["oid"]
-        if "price" in order:
+
+        # there exist 3 fundamettally different types of user_order messages,
+        # they differ in the presence or absence of certain parts of the message
+
+        if "status" in order:
+            # these are limit orders or market orders (new or updated).
+            #
+            # we also need to check whether they belong to our own gox instance,
+            # since they contain currency this is easy, we compare the currency
+            # and simply ignore mesages for all unrelated currencies.
             if order["currency"] == self.curr_quote and order["item"] == self.curr_base:
-                price = int(order["price"]["value_int"])
                 volume = int(order["amount"]["value_int"])
                 typ = order["type"]
                 status = order["status"]
-                self.signal_userorder(self,
-                    (price, volume, typ, oid, status))
+                if "price " in order:
+                    # these are limit orders (new or updated)
+                    price = int(order["price"]["value_int"])
+                else:
+                    # these are market orders (new or updated)
+                    price = 0
+                self.signal_userorder(self, (price, volume, typ, oid, status))
 
-        else: # removed (filled or canceled)
+        else:
+            # these are remove mesages (cancel or fill)
+            # here it is a bit more expensive to check whether they belong to
+            # this gox instance, they don't carry any other useful data besides
+            # the order id and the remove reason but since a remove message can
+            # only affect us if the oid is in the owns list already we just
+            # ask the orderbook instance whether it knows about this order
+            # and ignore all the ones that have unknown oid
             if self.orderbook.have_own_oid(oid):
-                self.signal_userorder(self, (0, 0, "", oid, "removed"))
+                # they don't contain a status field either, so we make up
+                # our own status string to make it more useful. It will
+                # be "removed:" followed by the reason. Possible reasons are:
+                # "requested", "completed_passive", "completed_active"
+                # so for example a cancel would be "removed:requested"
+                # and a limit order fill would be "removed:completed_passive.
+                status = "removed:" + order["reason"]
+                self.signal_userorder(self, (0, 0, "", oid, status))
 
     def _on_op_private_wallet(self, msg):
         """handle incoming wallet message (op=private, private=wallet)"""
@@ -1800,40 +1828,37 @@ class OrderBook(BaseObject):
         param: None
         an update to the owns list has happened, this can be order added,
         removed or filled, status or volume of an order changed. For specific
-        changes to individual orders see the additional signals below."""
+        changes to individual orders see the signal_own_* signals below."""
 
         self.signal_own_added           = Signal()
         """order was added
         param: (order)
         order is a reference to the Order() instance
         This signal will be emitted whenever a new order is added to
-        the owns list. Normally this happens soon after buy() or sell(),
-        initially the order will have the status "pending". It will also
-        be emitted for a market order but in this case it will immediately
-        be followed by a removed signal for the same order. If it is a
-        limit order then a while (order lag) later there will also be a
-        signal_own_opened (see below) to indicate that the status went
-        from pending to open."""
+        the owns list. Orders will initially have status "pending" and
+        some time later there will be signal_own_opened when the status
+        changed to open (onyl for limit orders), see below."""
 
         self.signal_own_removed         = Signal()
         """order has been removed
         param: (order, reason)
         order is a reference to the Order() instance
         reason is a string that can have the following values:
-          "" (empty string) order was a market order
           "requested" order was canceled
-          "completed_passive" order was filled
-        Bots will probably be interested in this signal and especially
-        the reason "completed_passive" because this is a reliable way to
-        determine that a trade has happened and the order is completely
-        filled because the trade signal alone won't carry this information"""
+          "completed_passive" limit order was filled completely
+          "completed_active" market order was filled completely
+        Bots will probably be interested in this signal because this is a
+        reliable way to determine that a trade has fully completed because the
+        trade signal alone won't tell you whether its partial or complete"""
 
         self.signal_own_opened          = Signal()
         """order status went to "open"
         param: (order)
         order is a reference to the Order() instance
         when the order changes from 'post-pending' to 'open' then this
-        signal will be emitted. It won't be emitted for market orders"""
+        signal will be emitted. It won't be emitted for market orders because
+        market orders can't have an "open" status, they never move beyond
+        "executing", they just execute and emit volume and removed signals."""
 
         self.signal_own_volume          = Signal()
         """order volume changed (partial fill)
@@ -1842,8 +1867,11 @@ class OrderBook(BaseObject):
         voldiff is the differenc in volume, so for a partial or a complete fill
         it would contain a negative value (integer number of satoshi) of the
         difference between now and the previous volume. This signal is always
-        emitted when a limit order is filled, even if it is not a partial fill.
-        It is not emitted for market orders."""
+        emitted when an order is filled or partially filled, it can be emitted
+        multiple times just like the trade messages. It will be emitted for
+        all types of orders. The last volume signal that finally brouhgt the
+        remaining order volume down to zero will be immediately followed by
+        a removed signal."""
 
         self.bids = [] # list of Level(), lowest ask first
         self.asks = [] # list of Level(), highest bid first
@@ -1945,10 +1973,24 @@ class OrderBook(BaseObject):
         removed = False # was the order removed?
         opened  = False # did the order change from 'post-pending' to 'open'"?
         voldiff = 0     # did the order volume change (partial fill)
-        if status == "removed":
+        if "removed" in status:
             for i in range(len(self.owns)):
                 if self.owns[i].oid == oid:
                     order = self.owns[i]
+
+                    # work around MtGox strangeness:
+                    # for some reason it will send a "completed_passive"
+                    # immediately followed by a "completed_active" when a
+                    # market order is filled and removed. Since "completed_passive"
+                    # is meant for limit orders only we will just completely
+                    # IGNORE all "completed_passive" if it affects a market order,
+                    # there WILL follow a "completed_active" immediately after.
+                    if order.price == 0:
+                        if "passive" in status:
+                            # ignore it, the correct one with
+                            # "active" will follow soon
+                            return
+
                     self.debug(
                         "### removing order %s " % oid,
                         "price:", self.gox.quote2str(order.price),
@@ -1999,11 +2041,7 @@ class OrderBook(BaseObject):
         # We try to help the strategy with tracking the orders as good
         # as we can by sending different signals for different events.
         if removed:
-            user_order = self.gox.msg["user_order"]
-            if "reason" in user_order:
-                reason = user_order["reason"]
-            else:
-                reason = ""
+            reason = self.gox.msg["user_order"]["reason"]
             self.signal_own_removed(self, (order, reason))
         if opened:
             self.signal_own_opened(self, (order))
