@@ -1633,7 +1633,7 @@ class Gox(BaseObject):
         order = msg["user_order"]
         oid = order["oid"]
 
-        # there exist 3 fundamettally different types of user_order messages,
+        # there exist 3 fundamentally different types of user_order messages,
         # they differ in the presence or absence of certain parts of the message
 
         if "status" in order:
@@ -1668,7 +1668,7 @@ class Gox(BaseObject):
                 # be "removed:" followed by the reason. Possible reasons are:
                 # "requested", "completed_passive", "completed_active"
                 # so for example a cancel would be "removed:requested"
-                # and a limit order fill would be "removed:completed_passive.
+                # and a limit order fill would be "removed:completed_passive".
                 status = "removed:" + order["reason"]
                 self.signal_userorder(self, (0, 0, "", oid, status))
 
@@ -1972,7 +1972,7 @@ class OrderBook(BaseObject):
         found   = False
         removed = False # was the order removed?
         opened  = False # did the order change from 'post-pending' to 'open'"?
-        voldiff = 0     # did the order volume change (partial fill)
+        voldiff = 0     # did the order volume change (full or partial fill)
         if "removed" in status:
             for i in range(len(self.owns)):
                 if self.owns[i].oid == oid:
@@ -2022,7 +2022,7 @@ class OrderBook(BaseObject):
                     break
 
             if not found:
-                # This canhappen if we added the order with a different
+                # This can happen if we added the order with a different
                 # application or the gox server sent the user_order message
                 # before the reply to "order/add" (this can happen because
                 # actually there is no guarantee which one arrives first).
@@ -2169,13 +2169,6 @@ class OrderBook(BaseObject):
             # to the orderbook, own_volume is meant for limit orders.
             # Also a price level of 0 makes no sense anyways, this
             # would only insert empty rows at price=0 into the book
-            return
-
-        if (typ == "ask" and price <= self.bid) or \
-           (typ == "bid" and price >= self.ask):
-            # same as above for orders that would immediately fill
-            # because price is on the other side of the book.
-            # don't add these to the book too.
             return
 
         (index, level) = self._find_level_or_insert_new(typ, price)
