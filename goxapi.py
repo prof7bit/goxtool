@@ -1629,7 +1629,6 @@ class Gox(BaseObject):
 
     def _on_op_private_user_order(self, msg):
         """handle incoming user_order message (op=private, private=user_order)"""
-        self.debug(pretty_format(msg))
         order = msg["user_order"]
         oid = order["oid"]
 
