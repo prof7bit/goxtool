@@ -610,6 +610,29 @@ class WinChart(Win):
         screen_from_bottom = relative_from_bottom * self.height
         return int(self.height - screen_from_bottom)
 
+    def paint_y_label(self, posy, posx, price):
+        """paint the y label of the history chart, formats the number
+        so that it needs not more room than necesary but it also uses
+        pmax to determine how many digits are needed so that all numbers
+        will be nicely aligned at the decimal point"""
+
+        fprice = self.gox.quote2float(price)
+        labelstr = ("%f" % fprice).rstrip("0").rstrip(".")
+
+        # look at pmax to determine the max number of digits before the decimal
+        # and then pad all smaller prices with spaces to make them align nicely.
+        need_digits = int(math.log10(self.gox.quote2float(self.pmax))) + 1
+        have_digits = len(str(int(fprice)))
+        if have_digits < need_digits:
+            padding = " " * (need_digits - have_digits)
+            labelstr = padding + labelstr
+
+        self.addstr(
+            posy, posx,
+            labelstr,
+            COLOR_PAIR["chart_text"]
+        )
+
     def paint_candle(self, posx, candle):
         """paint a single candle"""
 
@@ -836,11 +859,7 @@ class WinChart(Win):
                 while not labelprice > self.pmax:
                     posy = self.price_to_screen(labelprice)
                     if posy < self.height - 1:
-                        self.addstr(
-                            posy, posx,
-                            self.gox.quote2str(labelprice),
-                            COLOR_PAIR["chart_text"]
-                        )
+                        self.paint_y_label(posy, posx, labelprice)
                     labelprice += step
 
         # paint bid, ask, own orders
