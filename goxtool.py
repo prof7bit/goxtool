@@ -424,7 +424,7 @@ class WinOrderBook(Win):
 
                 # now add the own volumes to their bins
                 for order in book.owns:
-                    if order.typ == "ask":
+                    if order.typ == "ask" and order.price > 0:
                         order_bin_price = int(math.ceil(float(order.price) / group) * group)
                         for abin in bins:
                             if abin[1] == order.price:
@@ -505,7 +505,7 @@ class WinOrderBook(Win):
 
                 # now add the own volumes to their bins
                 for order in book.owns:
-                    if order.typ == "bid":
+                    if order.typ == "bid" and order.price > 0:
                         order_bin_price = int(math.floor(float(order.price) / group) * group)
                         for abin in bins:
                             if abin[1] == order.price:
@@ -612,7 +612,7 @@ class WinChart(Win):
 
     def paint_y_label(self, posy, posx, price):
         """paint the y label of the history chart, formats the number
-        so that it needs not more room than necesary but it also uses
+        so that it needs not more room than necessary but it also uses
         pmax to determine how many digits are needed so that all numbers
         will be nicely aligned at the decimal point"""
 
@@ -768,18 +768,19 @@ class WinChart(Win):
 
         # add the own volume to the bins
         for order in book.owns:
-            if order.typ == "ask":
-                bin_price = int(math.ceil(float(order.price) / group) * group)
-                for abin in bin_asks:
-                    if abin[1] == bin_price:
-                        abin[3] += order.volume
-                        break
-            else:
-                bin_price = int(math.floor(float(order.price) / group) * group)
-                for abin in bin_bids:
-                    if abin[1] == bin_price:
-                        abin[3] += order.volume
-                        break
+            if order.price > 0:
+                if order.typ == "ask":
+                    bin_price = int(math.ceil(float(order.price) / group) * group)
+                    for abin in bin_asks:
+                        if abin[1] == bin_price:
+                            abin[3] += order.volume
+                            break
+                else:
+                    bin_price = int(math.floor(float(order.price) / group) * group)
+                    for abin in bin_bids:
+                        if abin[1] == bin_price:
+                            abin[3] += order.volume
+                            break
 
         # highlight the relative change (optional)
         if self.gox.config.get_bool("goxtool", "highlight_changes"):
