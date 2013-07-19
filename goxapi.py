@@ -1645,7 +1645,7 @@ class Gox(BaseObject):
                 volume = int(order["amount"]["value_int"])
                 typ = order["type"]
                 status = order["status"]
-                if "price " in order:
+                if "price" in order:
                     # these are limit orders (new or updated)
                     price = int(order["price"]["value_int"])
                 else:
