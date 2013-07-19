@@ -1752,7 +1752,7 @@ class Gox(BaseObject):
         # we are now going to fake a user_order message (the one we
         # obviously missed earlier) that will have the effect of
         # removing the order cleanly.
-        fakemsg = {"user_order": {"oid": oid}}
+        fakemsg = {"user_order": {"oid": oid, "reason": "requested"}}
         self._on_op_private_user_order(fakemsg)
 
     def _on_order_amount_too_low(self, _msg):
