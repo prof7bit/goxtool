@@ -1445,18 +1445,18 @@ def toggle_setting(gox, alternatives, option_name, direction):
 def toggle_depth_group(gox, direction):
     """toggle the step width of the depth chart"""
     if gox.curr_quote in "JPY SEK":
-        alt = ["5", "10", "25", "50", "100", "200", "500", "1000"]
+        alt = ["5", "10", "25", "50", "100", "200", "500", "1000", "2000", "5000", "10000"]
     else:
-        alt = ["0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10"]
+        alt = ["0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10", "20", "50", "100"]
     toggle_setting(gox, alt, "depth_chart_group", direction)
     gox.orderbook.signal_changed(gox.orderbook, None)
 
 def toggle_orderbook_group(gox, direction):
     """toggle the group width of the orderbook"""
     if gox.curr_quote in "JPY SEK":
-        alt = ["0", "5", "10", "25", "50", "100", "200", "500", "1000"]
+        alt = ["0", "5", "10", "25", "50", "100", "200", "500", "1000", "2000", "5000", "10000"]
     else:
-        alt = ["0", "0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10"]
+        alt = ["0", "0.05", "0.1", "0.25", "0.5", "1", "2", "5", "10", "20", "50", "100"]
     toggle_setting(gox, alt, "orderbook_group", direction)
     gox.orderbook.signal_changed(gox.orderbook, None)
 
