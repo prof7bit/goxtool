@@ -1,4 +1,6 @@
 *.log
 *.ini
 *.pyc
+*.swp
+.ropeproject
 _*

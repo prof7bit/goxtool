@@ -1641,6 +1641,10 @@ def main():
         help="force protocol (socketio or websocket), ignore setting in .ini")
     argp.add_argument('--no-fulldepth', action="store_true", default=False,
         help="do not download full depth (useful for debugging)")
+    argp.add_argument('--no-depth', action="store_true", default=False,
+        help="do not request depth messages (implies no-fulldeph), useful for low traffic")
+    argp.add_argument('--no-lag', action="store_true", default=False,
+        help="do not request order-lag updates, useful for low traffic")
     argp.add_argument('--no-history', action="store_true", default=False,
         help="do not download full history (useful for debugging)")
     argp.add_argument('--use-http', action="store_true", default=False,
@@ -1666,9 +1670,13 @@ def main():
         strat_mod_list = args.strategy.split(",")
         goxapi.FORCE_PROTOCOL = args.protocol
         goxapi.FORCE_NO_FULLDEPTH = args.no_fulldepth
+        goxapi.FORCE_NO_DEPTH = args.no_depth
+        goxapi.FORCE_NO_LAG = args.no_lag
         goxapi.FORCE_NO_HISTORY = args.no_history
         goxapi.FORCE_HTTP_API = args.use_http
         goxapi.FORCE_NO_HTTP_API = args.no_http
+        if goxapi.FORCE_NO_DEPTH:
+            goxapi.FORCE_NO_FULLDEPTH = True
 
         # if its ok then we can finally enter the curses main loop
         if secret.prompt_decrypt() != secret.S_FAIL_FATAL:

@@ -1,4 +1,4 @@
-"""Mt.Gox API"""
+"""Mt.Gox API."""
 
 #  Copyright (c) 2013 Bernd Kreuss <prof7bit@gmail.com>
 #
@@ -24,7 +24,7 @@ PY_VERSION = sys.version_info
 
 if PY_VERSION < (2, 7):
     print("Sorry, minimal Python version is 2.7, you have: %d.%d"
-        % (PY_VERSION.major, PY_VERSION.minor))
+          % (PY_VERSION.major, PY_VERSION.minor))
     sys.exit(1)
 
 from ConfigParser import SafeConfigParser
@@ -50,10 +50,12 @@ from urllib import urlencode
 import weakref
 import websocket
 
-input = raw_input # pylint: disable=W0622,C0103
+input = raw_input  # pylint: disable=W0622,C0103
 
 FORCE_PROTOCOL = ""
 FORCE_NO_FULLDEPTH = False
+FORCE_NO_DEPTH = False
+FORCE_NO_LAG = False
 FORCE_NO_HISTORY = False
 FORCE_HTTP_API = False
 FORCE_NO_HTTP_API = False
@@ -63,6 +65,7 @@ WEBSOCKET_HOST = "websocket.mtgox.com"
 HTTP_HOST = "data.mtgox.com"
 
 USER_AGENT = "goxtool.py"
+
 
 # deprecated, use gox.quote2str() and gox.base2str() instead
 def int2str(value_int, currency):
@@ -74,6 +77,7 @@ def int2str(value_int, currency):
     else:
         return ("%12.5f" % (value_int / 100000.0))
 
+
 # deprecated, use gox.quote2float() and gox.base2float() instead
 def int2float(value_int, currency):
     """convert integer to float, determine the factor by currency name"""
@@ -84,6 +88,7 @@ def int2float(value_int, currency):
     else:
         return value_int / 100000.0
 
+
 # deprecated, use gox.quote2int() and gox.base2int() instead
 def float2int(value_float, currency):
     """convert float value to integer, determine the factor by currency name"""
@@ -93,6 +98,7 @@ def float2int(value_float, currency):
         return int(round(value_float * 1000))
     else:
         return int(round(value_float * 100000))
+
 
 def http_request(url, post=None, headers=None):
     """request data from the HTTP API, returns the response a string. If a
@@ -271,11 +277,15 @@ class Signal():
         the payload. The payload can be anything, it totally depends on the
         sender and type of the signal."""
         if inspect.ismethod(slot):
-            if slot.__self__ not in self._methods:
-                self._methods[slot.__self__] = set()
-            self._methods[slot.__self__].add(slot.__func__)
+            instance = slot.__self__
+            function = slot.__func__
+            if instance not in self._methods:
+                self._methods[instance] = set()
+            if function not in self._methods[instance]:
+                self._methods[instance].add(function)
         else:
-            self._functions.add(slot)
+            if slot not in self._functions:
+                self._functions.add(slot)
 
     def __call__(self, sender, data, error_signal_on_error=True):
         """dispatch signal to all connected slots. This is a synchronuos
@@ -299,10 +309,10 @@ class Signal():
                 except: # pylint: disable=W0702
                     errors.append(traceback.format_exc())
 
-            for obj, funcs in self._methods.items():
-                for func in funcs:
+            for instance, functions in self._methods.items():
+                for func in functions:
                     try:
-                        func(obj, sender, data)
+                        func(instance, sender, data)
                         sent = True
 
                     except: # pylint: disable=W0702
@@ -788,12 +798,14 @@ class BaseClient(BaseObject):
         needed subscription requests here again, just to be on the safe side."""
 
         symb = "%s%s" % (self.curr_base, self.curr_quote)
-        self.send(json.dumps({"op":"mtgox.subscribe", "channel":"depth.%s" % symb}))
+        if not FORCE_NO_DEPTH:
+            self.send(json.dumps({"op":"mtgox.subscribe", "channel":"depth.%s" % symb}))
         self.send(json.dumps({"op":"mtgox.subscribe", "channel":"ticker.%s" % symb}))
 
         # trades and lag are the same channels for all currencies
         self.send(json.dumps({"op":"mtgox.subscribe", "type":"trades"}))
-        self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
+        if not FORCE_NO_LAG:
+            self.send(json.dumps({"op":"mtgox.subscribe", "type":"lag"}))
 
         self.request_idkey()
         self.request_orders()
@@ -1035,8 +1047,12 @@ class WebsocketClient(BaseClient):
                 # example: ws://websocket.mtgox.com/?Channel=depth.LTCEUR/ticker.LTCEUR
                 # the trades and lag channel will be subscribed after connect
                 sym = "%s%s" % (self.curr_base, self.curr_quote)
-                ws_url = "%s%s?Channel=depth.%s/ticker.%s" % \
+                if not FORCE_NO_DEPTH:
+                    ws_url = "%s%s?Channel=depth.%s/ticker.%s" % \
                     (wsp, self.hostname, sym, sym)
+                else:
+                    ws_url = "%s%s?Channel=ticker.%s" % \
+                    (wsp, self.hostname, sym)
                 self.debug("trying plain old Websocket: %s ... " % ws_url)
 
                 self.socket = websocket.WebSocket()
@@ -1158,8 +1174,10 @@ class SocketIOClient(BaseClient):
                 # subscribing depth and ticker through the querystring,
                 # the trade and lag will be subscribed later after connect
                 sym = "%s%s" % (self.curr_base, self.curr_quote)
-                querystring = "Channel=depth.%s/ticker.%s" % (sym, sym)
-
+                if not FORCE_NO_DEPTH:
+                    querystring = "Channel=depth.%s/ticker.%s" % (sym, sym)
+                else:
+                    querystring = "Channel=ticker.%s" % (sym)
                 self.debug("trying Socket.IO: %s?%s ..." % (url, querystring))
                 self.socket = SocketIO()
                 self.socket.connect(url, query=querystring)
@@ -1836,7 +1854,7 @@ class OrderBook(BaseObject):
         This signal will be emitted whenever a new order is added to
         the owns list. Orders will initially have status "pending" and
         some time later there will be signal_own_opened when the status
-        changed to open (onyl for limit orders), see below."""
+        changed to open."""
 
         self.signal_own_removed         = Signal()
         """order has been removed
