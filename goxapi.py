@@ -1633,9 +1633,9 @@ class Gox(BaseObject):
                 self.quote2str(price)
             ))
             # send another private/info request because the fee might have
-            # changed. We request it a few seconds later because the server
+            # changed. We request it a minute later because the server
             # seems to need some time until the new values are available.
-            self.client.request_info_later(10)
+            self.client.request_info_later(60)
         else:
             self.debug("trade: %s: %s @ %s" % (
                 typ,
