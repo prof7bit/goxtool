@@ -892,9 +892,12 @@ class BaseClient(BaseObject):
             except Exception as exc:
                 # should this ever happen? HTTP 5xx wont trigger this,
                 # something else must have gone wrong, a totally malformed
-                # reply or something else. Log the error and don't retry
+                # reply or something else. 
                 self.debug("### exception in _http_thread_func:",
                     exc, api_endpoint, params, reqid)
+                
+                #enqueue it again
+                self.enqueue_http_request(api_endpoint, params, reqid)
 
             if translated:
                 self.signal_recv(self, (json.dumps(translated)))
