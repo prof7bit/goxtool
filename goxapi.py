@@ -893,10 +893,15 @@ class BaseClient(BaseObject):
                 # should this ever happen? HTTP 5xx wont trigger this,
                 # something else must have gone wrong, a totally malformed
                 # reply or something else. 
+                #
+                # After some time of testing during times of heavy
+                # volatility it appears that this happens mostly when 
+                # there is heavy load on their servers. Resubmitting
+                # the API call will then eventally succeed.
                 self.debug("### exception in _http_thread_func:",
                     exc, api_endpoint, params, reqid)
                 
-                #enqueue it again
+                # enqueue it again, it will eventually succeed.
                 self.enqueue_http_request(api_endpoint, params, reqid)
 
             if translated:
