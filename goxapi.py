@@ -1675,7 +1675,7 @@ class Gox(BaseObject):
                 self.signal_userorder(self, (price, volume, typ, oid, status))
 
         else:
-            # these are remove mesages (cancel or fill)
+            # these are remove messages (cancel or fill)
             # here it is a bit more expensive to check whether they belong to
             # this gox instance, they don't carry any other useful data besides
             # the order id and the remove reason but since a remove message can
