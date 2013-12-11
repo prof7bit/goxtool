@@ -1286,11 +1286,11 @@ class PubnubClient(BaseClient):
 
     def _sub_private_thread(self):
         """thread for receiving the private messages"""
-        if not self.secret.know_secret:
+        if (not self.secret) or (not self.secret.know_secret()):
             return
 
         res = {}
-        while not "data" in res:
+        while (not res) or (not "data" in res):
             print "requesting private channel auth"
             res = self.http_signed_call("stream/private_get", {})
             # print pretty_format(res)
