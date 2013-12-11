@@ -1272,34 +1272,34 @@ class PubnubClient(BaseClient):
     def _sub_private_thread(self):
         print "requesting private channel auth"
         res = self.http_signed_call("stream/private_get", {})
-        print pretty_format(res)
+        # print pretty_format(res)
 
-        # this thing does not work. Why?
         print "init private pubnub"
-        pubnub = Pubnub.Pubnub(
+        self._pubnub_priv = Pubnub.Pubnub(
             res["data"]["pub"],
             res["data"]["sub"],
-            res["data"]["auth"],
+            None,
             res["data"]["cipher"],
             True
         )
         print "subscribe private channel"
-        self._sub_thread(res["data"]["channel"], "private")
+        self._pubnub_priv.subscribe({
+           'channel'  : res["data"]["channel"],
+           'auth'     : res["data"]["auth"],
+           'callback' : self._pubnub_receive
+        })
 
     def _sub_thread(self, chan, name):
         print "subscribing %s" % name
         self._pubnub.subscribe({
            'channel'  : chan,
+           'auth'     : "",
            'callback' : self._pubnub_receive
         })
         self.debug("### conection lost: %s" % name)
 
     def _pubnub_receive(self, msg):
-        self.signal_recv(self, json.dumps(msg))
-        return True
-
-    def _pubnub_receive_1(self, msg):
-        print msg
+        self.signal_recv(self, msg)
         return True
 
     def channel_subscribe(self):
@@ -1618,7 +1618,10 @@ class Gox(BaseObject):
         can handle it."""
         (str_json) = data
         handler = None
-        msg = json.loads(str_json)
+        if type(str_json) == dict:
+            msg = str_json # was already a dict
+        else:
+            msg = json.loads(str_json)
         self.msg = msg
         if "op" in msg:
             try:

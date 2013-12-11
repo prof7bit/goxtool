@@ -1,4 +1,4 @@
-## www.pubnub.com - PubNub Real-time push service in the cloud. 
+## www.pubnub.com - PubNub Real-time push service in the cloud.
 # coding=utf8
 
 ## PubNub Real-time Push APIs and Notifications Framework
@@ -12,7 +12,7 @@
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
-from base64 import encodestring, decodestring 
+from base64 import encodestring, decodestring
 import hashlib
 import hmac
 
@@ -27,7 +27,7 @@ class PubnubCrypto() :
     pc = PubnubCrypto
 
     """
-   
+
     def pad( self, msg, block_size=16 ):
         """
         #**
@@ -41,7 +41,7 @@ class PubnubCrypto() :
         """
         padding = block_size - (len(msg) % block_size)
         return msg + chr(padding)*padding
-       
+
     def depad( self, msg ):
         """
         #**
@@ -99,7 +99,7 @@ except ImportError: import simplejson as json
 import time
 import hashlib
 import urllib2
-import uuid 
+import uuid
 
 class PubnubBase(object):
     def __init__(
@@ -142,9 +142,9 @@ class PubnubBase(object):
             self.origin = 'https://' + self.origin
         else :
             self.origin = 'http://'  + self.origin
-        
+
         self.uuid = UUID or str(uuid.uuid4())
-        
+
         if not isinstance(self.uuid, basestring):
             raise AttributeError("pres_uuid must be a string")
 
@@ -238,7 +238,7 @@ class PubnubBase(object):
         if args.has_key('callback') :
             callback = args['callback']
         else :
-            callback = None 
+            callback = None
 
         #message = json.dumps(args['message'], separators=(',',':'))
         message = self.encrypt(args['message'])
@@ -255,7 +255,7 @@ class PubnubBase(object):
             '0',
             message
         ]}, callback)
-    
+
     def presence( self, args ) :
         """
         #**
@@ -275,7 +275,7 @@ class PubnubBase(object):
 
         pubnub.presence({
             'channel'  : 'hello_world',
-            'callback' : receive 
+            'callback' : receive
         })
         """
 
@@ -293,10 +293,10 @@ class PubnubBase(object):
         channel   = str(args['channel'])
         callback  = args['callback']
         subscribe_key = args.get('subscribe_key') or self.subscribe_key
-        
+
         return self.subscribe({'channel': channel+'-pnpres', 'subscribe_key':subscribe_key, 'callback': callback})
-    
-    
+
+
     def here_now( self, args ) :
         """
         #**
@@ -323,20 +323,20 @@ class PubnubBase(object):
             callback = args['callback']
         else :
             callback = None
-        
+
         ## Fail if bad input.
         if not channel :
             raise Exception('Missing Channel')
             return False
-        
+
         ## Get Presence Here Now
         return self._request({"urlcomponents": [
             'v2','presence',
             'sub_key', self.subscribe_key,
             'channel', channel
         ]}, callback);
-        
-        
+
+
     def history( self, args ) :
         """
         #**
@@ -402,14 +402,14 @@ class PubnubBase(object):
         ## Capture User Input
         channel = str(args['channel'])
 
-        params = dict() 
-        count = 100    
-        
+        params = dict()
+        count = 100
+
         if args.has_key('count'):
             count = int(args['count'])
 
-        params['count'] = str(count)    
-        
+        params['count'] = str(count)
+
         if args.has_key('reverse'):
             params['reverse'] = str(args['reverse']).lower()
 
@@ -428,7 +428,7 @@ class PubnubBase(object):
         if args.has_key('callback') :
             callback = args['callback']
         else :
-            callback = None 
+            callback = None
 
         ## Get History
         return self._request({ 'urlcomponents' : [
@@ -459,7 +459,7 @@ class PubnubBase(object):
         if args and args.has_key('callback') :
             callback = args['callback']
         else :
-            callback = None 
+            callback = None
         time = self._request({'urlcomponents' : [
             'time',
             '0'
@@ -474,7 +474,7 @@ class PubnubBase(object):
                 hex(ord(ch)).replace( '0x', '%' ).upper() or
                 ch for ch in list(bit)
             ]) for bit in request]
-    
+
     def getUrl(self,request):
         ## Build URL
         url = self.origin + '/' + "/".join([
@@ -524,7 +524,7 @@ class PubnubCore(PubnubBase):
             ssl_on=ssl_on,
             origin=origin,
             UUID=uuid
-        )        
+        )
 
         self.subscriptions = {}
         self.timetoken     = 0
@@ -552,7 +552,7 @@ class PubnubCore(PubnubBase):
 
         pubnub.subscribe({
             'channel'  : 'hello_world',
-            'callback' : receive 
+            'callback' : receive
         })
 
         """
@@ -571,6 +571,7 @@ class PubnubCore(PubnubBase):
         channel   = str(args['channel'])
         callback  = args['callback']
         subscribe_key = args.get('subscribe_key') or self.subscribe_key
+        auth = args.get("auth")
 
         ## Begin Subscribe
         while True :
@@ -584,7 +585,7 @@ class PubnubCore(PubnubBase):
                     channel,
                     '0',
                     str(timetoken)
-                ],"urlparams" : {"uuid" : self.uuid }})
+                ],"urlparams" : {"uuid" : self.uuid, "auth" : auth }})
 
                 messages          = response[0]
                 args['timetoken'] = response[1]
@@ -595,6 +596,8 @@ class PubnubCore(PubnubBase):
 
                 ## Run user Callback and Reconnect if user permits.
                 for message in messages :
+                    if self.cipher_key:
+                        message = self.decrypt(message)
                     if not callback(message) :
                         return
 
@@ -624,7 +627,7 @@ class Pubnub(PubnubCore):
             ssl_on = ssl_on,
             origin = origin,
             uuid = pres_uuid
-        )        
+        )
 
     def _request( self, request, callback = None ) :
         ## Build URL
@@ -639,7 +642,7 @@ class Pubnub(PubnubCore):
             resp_json = json.loads(response)
         except:
             return None
-            
+
         if (callback):
             callback(resp_json)
         else:
