@@ -755,6 +755,10 @@ class BaseClient(BaseObject):
             self.debug("""closing socket""")
             self.socket.sock.close()
 
+    def force_reconnect(self):
+        """force client to reconnect"""
+        self.socket.close()
+
     def _try_send_raw(self, raw_data):
         """send raw data to the websocket or disconnect and close"""
         if self.connected:
@@ -1081,7 +1085,7 @@ class BaseClient(BaseObject):
         if self.connected:
             if time.time() - self._time_last_received > 60:
                 self.debug("did not receive anything for a long time, disconnecting.")
-                self.socket.close()
+                self.force_reconnect()
                 self.connected = False
             if time.time() - self._time_last_subscribed > 3600:
                 # sometimes after running for a few hours it
@@ -1234,8 +1238,18 @@ class PubnubClient(BaseClient):
     """
 
     def __init__(self, curr_base, curr_quote, secret, config):
-        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
+        global FORCE_HTTP_API #pylint: disable=W0603
         FORCE_HTTP_API = True
+        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
+        self._pubnub = None
+        self._pubnub_priv = None
+
+    def force_reconnect(self):
+        pass #fixme implement this
+
+    def send(self, _msg):
+        # can't send with this client,
+        self.debug("invalid attempt to use send() with Pubnub client")
 
     def _recv_thread_func(self):
         while not self._terminating:
@@ -1245,11 +1259,9 @@ class PubnubClient(BaseClient):
                 'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe'
             )
 
-            # FIXME: respect no-fulldepth and no-history flags
-            self.request_orders()
-            self.request_info()
-            self.request_fulldepth()
-            self.request_history()
+            # the following doesn't actually subscribe to channels
+            # in this implementation, it only gets acct info and market data
+            self.channel_subscribe(True)
 
             # each channel in a dfferent thread
             start_thread(self._sub_ticker_thread, "ticker thread")
@@ -1261,18 +1273,27 @@ class PubnubClient(BaseClient):
             self._sub_thread(CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)], "depth")
 
     def _sub_ticker_thread(self):
+        """thread for receiving the ticker messages"""
         self._sub_thread(CHANNELS['ticker.%s%s' % (self.curr_base, self.curr_quote)], "ticker")
 
     def _sub_trade_thread(self):
+        """thread for receiving the trade messages"""
         self._sub_thread(CHANNELS['trade.%s' % self.curr_base], "trade")
 
     def _sub_lag_thread(self):
+        """thread for receiving the lag messages"""
         self._sub_thread(CHANNELS['trade.lag'], "lag")
 
     def _sub_private_thread(self):
-        print "requesting private channel auth"
-        res = self.http_signed_call("stream/private_get", {})
-        # print pretty_format(res)
+        """thread for receiving the private messages"""
+        if not self.secret.know_secret:
+            return
+
+        res = {}
+        while not "data" in res:
+            print "requesting private channel auth"
+            res = self.http_signed_call("stream/private_get", {})
+            # print pretty_format(res)
 
         print "init private pubnub"
         self._pubnub_priv = Pubnub.Pubnub(
@@ -1282,6 +1303,10 @@ class PubnubClient(BaseClient):
             res["data"]["cipher"],
             True
         )
+
+        self.connected = True
+        self.signal_connected(self, None)
+
         print "subscribe private channel"
         self._pubnub_priv.subscribe({
            'channel'  : res["data"]["channel"],
@@ -1290,6 +1315,7 @@ class PubnubClient(BaseClient):
         })
 
     def _sub_thread(self, chan, name):
+        """subscribe to channel and receive in blocking loop"""
         print "subscribing %s" % name
         self._pubnub.subscribe({
            'channel'  : chan,
@@ -1299,12 +1325,19 @@ class PubnubClient(BaseClient):
         self.debug("### conection lost: %s" % name)
 
     def _pubnub_receive(self, msg):
+        """callback method called by pubnub wen a message is received"""
         self.signal_recv(self, msg)
+        self._time_last_received = time.time()
         return True
 
-    def channel_subscribe(self):
-        # nothing, this works differently here
-        pass
+    def channel_subscribe(self, download_market_data=False):
+        # no channels to subscribe, this happened on connect already
+        self.request_orders()
+        self.request_info()
+        if download_market_data:
+            self.request_fulldepth()
+            self.request_history()
+        self._time_last_subscribed = time.time()
 
 
 class SocketIOClient(BaseClient):
@@ -1576,6 +1609,8 @@ class Gox(BaseObject):
         need_no_history = not self.config.get_bool("gox", "load_history")
         need_no_depth = need_no_depth or FORCE_NO_FULLDEPTH
         need_no_history = need_no_history or FORCE_NO_HISTORY
+        if isinstance(self.client, PubnubClient):
+            self.ready_idkey = True
         ready_account = \
             self.ready_idkey and self.ready_info and self.orderbook.ready_owns
         if ready_account or need_no_account:
