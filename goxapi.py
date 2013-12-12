@@ -233,7 +233,7 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "use_ssl", "True"]
                 ,["gox", "use_plain_old_websocket", "True"]
                 ,["gox", "use_http_api", "True"]
-                ,["gox", "use_tonce", "False"]
+                ,["gox", "use_tonce", "True"]
                 ,["gox", "load_fulldepth", "True"]
                 ,["gox", "load_history", "True"]
                 ,["gox", "history_timeframe", "15"]
