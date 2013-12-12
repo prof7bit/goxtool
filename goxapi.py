@@ -1087,7 +1087,7 @@ class BaseClient(BaseObject):
                 self.debug("did not receive anything for a long time, disconnecting.")
                 self.force_reconnect()
                 self.connected = False
-            if time.time() - self._time_last_subscribed > 3600:
+            if time.time() - self._time_last_subscribed > 1800:
                 # sometimes after running for a few hours it
                 # will lose some of the subscriptons for no
                 # obvious reason. I've seen it losing the trades
@@ -1332,11 +1332,20 @@ class PubnubClient(BaseClient):
 
     def channel_subscribe(self, download_market_data=False):
         # no channels to subscribe, this happened on connect already
-        self.request_orders()
         self.request_info()
+        self.request_orders()
         if download_market_data:
             self.request_fulldepth()
             self.request_history()
+
+        # repeat the private_get api call to avoid expiration
+        # according to what the wiki says this is enough already
+        res = {}
+        while (not res) or (not "data" in res):
+            print "requesting private channel auth"
+            res = self.http_signed_call("stream/private_get", {})
+            # print pretty_format(res)
+
         self._time_last_subscribed = time.time()
 
 
