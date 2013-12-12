@@ -2193,6 +2193,12 @@ class OrderBook(BaseObject):
         removed = False # was the order removed?
         opened  = False # did the order change from 'post-pending' to 'open'"?
         voldiff = 0     # did the order volume change (full or partial fill)
+        if "executing" in status:
+            # don't need this status at all
+            return
+        if "post-pending" in status:
+            # don't need this status at all
+            return
         if "removed" in status:
             for i in range(len(self.owns)):
                 if self.owns[i].oid == oid:
@@ -2231,12 +2237,15 @@ class OrderBook(BaseObject):
             for order in self.owns:
                 if order.oid == oid:
                     found = True
+                    if order.status == "open" and status == "open":
+                        # ignore duplicated open message
+                        return
                     self.debug(
                         "### updating order %s " % oid,
                         "volume:", self.gox.base2str(volume),
                         "status:", status)
                     voldiff = volume - order.volume
-                    opened = (order.status == "post-pending" and status == "open")
+                    opened = (order.status != "open" and status == "open")
                     order.volume = volume
                     order.status = status
                     break
