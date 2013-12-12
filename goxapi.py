@@ -1257,7 +1257,7 @@ class PubnubClient(BaseClient):
 
     def _recv_thread_func(self):
         while not self._terminating:
-            print "creating pubnub object..."
+            self.debug("creating pubnub object...")
             self._pubnub = Pubnub.Pubnub(
                 'demo',
                 'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe'
@@ -1276,7 +1276,9 @@ class PubnubClient(BaseClient):
             # The stupid "subscribe" call is blocking (it really shouldn't
             # be called subscribe) and running an uninterruptible loop,
             # doing a new connect and GET request after every message.
+            #
             # What an enormous crap.
+            #
             # Until I figured out how to at least "subscribe" multiple
             # channels at once I need to run a separate thread for each
             # channel, each of them wasting a fuckton of resources on
@@ -1289,7 +1291,9 @@ class PubnubClient(BaseClient):
             start_thread(self._sub_lag_thread, "lag thread")
             start_thread(self._sub_private_thread, "private thread")
 
-            # this is blocking
+            # the following will be blocking until error occurs
+            # (hoping that all my other threads then also end with error,
+            # so I can loop again and restart/reconect all anew)
             self._sub_thread(CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)], "depth")
 
     def _sub_ticker_thread(self):
@@ -1311,11 +1315,11 @@ class PubnubClient(BaseClient):
 
         res = {}
         while (not res) or (not "data" in res):
-            print "requesting private channel auth"
+            self.debug("requesting private channel auth")
             res = self.http_signed_call("stream/private_get", {})
-            # print pretty_format(res)
+            # self.debug(pretty_format(res))
 
-        print "init private pubnub"
+        self.debug("init private pubnub")
         self._pubnub_priv = Pubnub.Pubnub(
             res["data"]["pub"],
             res["data"]["sub"],
@@ -1327,7 +1331,7 @@ class PubnubClient(BaseClient):
         self.connected = True
         self.signal_connected(self, None)
 
-        print "subscribe private channel"
+        self.debug("subscribe private channel")
         self._pubnub_priv.subscribe({
            'channel'  : res["data"]["channel"],
            'auth'     : res["data"]["auth"],
@@ -1336,7 +1340,7 @@ class PubnubClient(BaseClient):
 
     def _sub_thread(self, chan, name):
         """subscribe to channel and receive in blocking loop"""
-        print "subscribing %s" % name
+        self.debug("subscribing %s" % name)
         self._pubnub.subscribe({
            'channel'  : chan,
            'auth'     : "",
@@ -1362,9 +1366,9 @@ class PubnubClient(BaseClient):
         # according to what the wiki says this is enough already
         res = {}
         while (not res) or (not "data" in res):
-            print "requesting private channel auth"
+            self.debug("requesting private channel auth")
             res = self.http_signed_call("stream/private_get", {})
-            # print pretty_format(res)
+            # self.debug(pretty_format(res))
 
         self._time_last_subscribed = time.time()
 
