@@ -7,8 +7,10 @@
 
 ## -----------------------------------
 ## PubNub 3.3.4 Real-time Push Cloud API
+##
+##    **** MODIFIED FOR GOXTOOL ****
+##
 ## -----------------------------------
-
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
@@ -531,7 +533,7 @@ class PubnubCore(PubnubBase):
         self.version       = '3.4'
         self.accept_encoding = 'gzip'
 
-
+        self.killed = False
 
     def subscribe( self, args ) :
         """
@@ -574,8 +576,7 @@ class PubnubCore(PubnubBase):
         auth = args.get("auth")
 
         ## Begin Subscribe
-        while True :
-
+        while not self.killed:
             timetoken = 'timetoken' in args and args['timetoken'] or 0
             try :
                 ## Wait for Message
@@ -586,6 +587,9 @@ class PubnubCore(PubnubBase):
                     '0',
                     str(timetoken)
                 ],"urlparams" : {"uuid" : self.uuid, "auth" : auth }})
+
+                if self.killed:
+                    return "killed"
 
                 messages          = response[0]
                 args['timetoken'] = response[1]
@@ -606,6 +610,12 @@ class PubnubCore(PubnubBase):
 
         return True
 
+    def kill(self):
+        """terminate all subscriptions. It will not immediately make the
+        all subscribe calls exit, they will still keep waiting until timeout
+        but they won't fire any callbacks anymore, their threads can be left
+        alone until they silently end and terminate."""
+        self.killed = True
 
 
 class Pubnub(PubnubCore):
