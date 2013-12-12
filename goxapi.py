@@ -1236,7 +1236,7 @@ class PubnubClient(BaseClient):
 
     THE Pubnub.py MODULE WAS PATCHED BY ME TO
     MAKE AUTH AND DECRYPTION WORK, DIFF AGAINST
-    ORINAL TO SEE WAHT I DID.
+    ORIGINAL TO SEE WAHT I DID.
 
     INVOKE THIS CLIENT WITH --protocol=pubnub
     """
@@ -1267,7 +1267,23 @@ class PubnubClient(BaseClient):
             # in this implementation, it only gets acct info and market data
             self.channel_subscribe(True)
 
-            # each channel in a dfferent thread
+            # each channel in a dfferent thread. They are using some kind
+            # of long polling, what a waste of resources, this is 1990's
+            # technology (haven't they heard of websockets yet?) Its
+            # waiting in a blocking http request and disonnecting and
+            # reconnecting AFTER EVERY GODDAMN MESSAGE, I have never seen
+            # so many syn and ack packages flying over the network before.
+            # The stupid "subscribe" call is blocking (it really shouldn't
+            # be called subscribe) and running an uninterruptible loop,
+            # doing a new connect and GET request after every message.
+            # What an enormous crap.
+            # Until I figured out how to at least "subscribe" multiple
+            # channels at once I need to run a separate thread for each
+            # channel, each of them wasting a fuckton of resources on
+            # its own. And I have yet to figure out how to cleanly
+            # "disconnect", that will be my next problem, it seems they
+            # did not think about this when they "designd" that idiotic
+            # "protocol".
             start_thread(self._sub_ticker_thread, "ticker thread")
             start_thread(self._sub_trade_thread, "trade thread")
             start_thread(self._sub_lag_thread, "lag thread")
@@ -1329,7 +1345,7 @@ class PubnubClient(BaseClient):
         self.debug("### conection lost: %s" % name)
 
     def _pubnub_receive(self, msg):
-        """callback method called by pubnub wen a message is received"""
+        """callback method called by pubnub when a message is received"""
         self.signal_recv(self, msg)
         self._time_last_received = time.time()
         return True
