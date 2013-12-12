@@ -1232,9 +1232,13 @@ class PubnubClient(BaseClient):
     """"this implements the pubnub client.
 
     THIS IS ALL INCOMPLETE AND ITS A TOTAL MESS
-    BECAUSE I NEEDED TO HACK THIS IN A HURRY
+    BECAUSE I NEEDED TO HACK THIS IN A HURRY.
 
-    AND ITS NOT YET WORKING ALSO. INVOKE IT WITH --protocol=pubnub
+    THE Pubnub.py MODULE WAS PATCHED BY ME TO
+    MAKE AUTH AND DECRYPTION WORK, DIFF AGAINST
+    ORINAL TO SEE WAHT I DID.
+
+    INVOKE THIS CLIENT WITH --protocol=pubnub
     """
 
     def __init__(self, curr_base, curr_quote, secret, config):
