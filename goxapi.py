@@ -1267,8 +1267,8 @@ class PubnubClient(BaseClient):
             # in this implementation, it only gets acct info and market data
             self.channel_subscribe(True)
 
-            # each channel in a dfferent thread. They are using some kind
-            # of long polling, what a waste of resources, this is 1990's
+            # Here comes the ugliness. They are using some kind of
+            # long polling, what a waste of resources, this is 1990's
             # technology (haven't they heard of websockets yet?) Its
             # waiting in a blocking http request and disonnecting and
             # reconnecting AFTER EVERY GODDAMN MESSAGE, I have never seen
@@ -1279,39 +1279,34 @@ class PubnubClient(BaseClient):
             #
             # What an enormous crap.
             #
-            # Until I figured out how to at least "subscribe" multiple
-            # channels at once I need to run a separate thread for each
-            # channel, each of them wasting a fuckton of resources on
-            # its own. And I have yet to figure out how to cleanly
-            # "disconnect", that will be my next problem, it seems they
-            # did not think about this when they "designd" that idiotic
-            # "protocol".
-            start_thread(self._sub_ticker_thread, "ticker thread")
-            start_thread(self._sub_trade_thread, "trade thread")
-            start_thread(self._sub_lag_thread, "lag thread")
-            start_thread(self._sub_private_thread, "private thread")
 
-            # the following will be blocking until error occurs
-            # (hoping that all my other threads then also end with error,
-            # so I can loop again and restart/reconect all anew)
-            self._sub_thread(CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)], "depth")
+            if self.secret.know_secret():
+                # the following starts a separate pubnub for the private
+                # channel in a separate thread (I have yet to figure out how to
+                # cleanly "disconnect" if it expires and I need to re-subscribe,
+                # that will be my next problem, it seems they did not even think
+                # about this at all when they "designd" that idiotic "protocol").
+                start_thread(self._sub_private_thread, "private thread")
 
-    def _sub_ticker_thread(self):
-        """thread for receiving the ticker messages"""
-        self._sub_thread(CHANNELS['ticker.%s%s' % (self.curr_base, self.curr_quote)], "ticker")
+            # now prepare the channel list for the public channnels
+            chanlist = ",".join([
+                CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)],
+                CHANNELS['ticker.%s%s' % (self.curr_base, self.curr_quote)],
+                CHANNELS['trade.%s' % self.curr_base],
+                CHANNELS['trade.lag']
+            ])
 
-    def _sub_trade_thread(self):
-        """thread for receiving the trade messages"""
-        self._sub_thread(CHANNELS['trade.%s' % self.curr_base], "trade")
-
-    def _sub_lag_thread(self):
-        """thread for receiving the lag messages"""
-        self._sub_thread(CHANNELS['trade.lag'], "lag")
+            # the following will now be blocking until error occurs
+            self.debug("subscribing public channels")
+            self._pubnub.subscribe({
+               'channel'  : chanlist,
+               'auth'     : "",
+               'callback' : self._pubnub_receive
+            })
+            self.debug("### conection for public channels lost")
 
     def _sub_private_thread(self):
         """thread for receiving the private messages"""
-        if (not self.secret) or (not self.secret.know_secret()):
-            return
 
         res = {}
         while (not res) or (not "data" in res):
@@ -1332,21 +1327,13 @@ class PubnubClient(BaseClient):
         self.signal_connected(self, None)
 
         self.debug("subscribe private channel")
+
+        # blocking
         self._pubnub_priv.subscribe({
            'channel'  : res["data"]["channel"],
            'auth'     : res["data"]["auth"],
            'callback' : self._pubnub_receive
         })
-
-    def _sub_thread(self, chan, name):
-        """subscribe to channel and receive in blocking loop"""
-        self.debug("subscribing %s" % name)
-        self._pubnub.subscribe({
-           'channel'  : chan,
-           'auth'     : "",
-           'callback' : self._pubnub_receive
-        })
-        self.debug("### conection lost: %s" % name)
 
     def _pubnub_receive(self, msg):
         """callback method called by pubnub when a message is received"""
@@ -1362,13 +1349,14 @@ class PubnubClient(BaseClient):
             self.request_fulldepth()
             self.request_history()
 
-        # repeat the private_get api call to avoid expiration
-        # according to what the wiki says this is enough already
-        res = {}
-        while (not res) or (not "data" in res):
-            self.debug("requesting private channel auth")
-            res = self.http_signed_call("stream/private_get", {})
-            # self.debug(pretty_format(res))
+        if self.secret.know_secret():
+            # repeat the private_get api call to avoid expiration
+            # according to what the wiki says this is enough already
+            res = {}
+            while (not res) or (not "data" in res):
+                self.debug("requesting private channel auth")
+                res = self.http_signed_call("stream/private_get", {})
+                # self.debug(pretty_format(res))
 
         self._time_last_subscribed = time.time()
 
