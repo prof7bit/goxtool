@@ -1320,7 +1320,6 @@ class PubnubClient(BaseClient):
             res["data"]["sub"],
             None,
             res["data"]["cipher"],
-            True
         )
 
         self.connected = True
