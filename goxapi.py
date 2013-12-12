@@ -1267,8 +1267,9 @@ class PubnubClient(BaseClient):
             'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe'
         )
 
-        # the following doesn't actually subscribe to channels
+        # the following doesn't actually subscribe to the public channels
         # in this implementation, it only gets acct info and market data
+        # and it also starts a separate thread to receive private messages
         self.channel_subscribe(True)
 
         # Here comes the ugliness. They are using some kind of
