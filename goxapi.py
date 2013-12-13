@@ -1268,7 +1268,8 @@ class PubnubClient(BaseClient):
         self.channel_subscribe(True)
 
         if not self._pubnub_priv:
-            start_thread(self._sub_private_thread, "private channel thread")
+            if self.secret and self.secret.know_secret():
+                start_thread(self._sub_private_thread, "private channel thread")
 
         chanlist = ",".join([
             CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)],
