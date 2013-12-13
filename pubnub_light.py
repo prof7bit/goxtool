@@ -31,20 +31,25 @@ class SocketError(Exception):
 
 
 class _SSLSocketWrapper():
+    """wrapper aroud socket to enable SSL"""
     def __init__(self, sock):
         self.sock = sock
         self.ssl = socket.ssl(sock)
 
     def recv(self, bufsize):
+        """recv through ssl"""
         return self.ssl.read(bufsize)
 
     def send(self, payload):
+        """send through ssl"""
         return self.ssl.write(payload)
 
     def shutdown(self, mode):
+        """shutdown the socket"""
         self.sock.shutdown(mode)
 
     def close(self):
+        """close the socket and clean up"""
         self.sock.close()
         self.ssl = None
         self.sock = None
@@ -53,6 +58,7 @@ class _SSLSocketWrapper():
 class PubNub(): #pylint: disable=R0902
     """implements a simple pubnub client that tries to stay connected
     and is interruptible immediately (using socket instead of urllib2)"""
+    #pylint: disable=R0913
     def __init__(self, sub, chan, auth="", cipher="", ssl=False):
         self.sock = None
         self.uuid = uuid.uuid4()
@@ -65,6 +71,7 @@ class PubNub(): #pylint: disable=R0902
         self.connected = False
         self.killed = False
 
+    #pylint: disable=R0913
     def reinit(self, sub, chan, auth="", cipher="", ssl=False):
         """set new subscription parameters, and and reset kill flag"""
         self.sub = sub
