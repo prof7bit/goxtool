@@ -1261,10 +1261,8 @@ class PubnubClient(BaseClient):
         self.debug("invalid attempt to use send() with Pubnub client")
 
     def _recv_thread_func(self):
-
         # the following doesn't actually subscribe to the public channels
         # in this implementation, it only gets acct info and market data
-        # and it also starts a separate thread to receive private messages
         self.channel_subscribe(True)
 
         if not self._pubnub_priv:
@@ -1293,7 +1291,7 @@ class PubnubClient(BaseClient):
                         self.signal_connected(self, None)
                     for message in messages:
                         self.signal_recv(self, (message))
-            except:
+            except Exception:
                 self.debug("public channel interrupted")
                 if not self._terminating:
                     time.sleep(1)
@@ -1303,7 +1301,6 @@ class PubnubClient(BaseClient):
 
     def _sub_private_thread(self):
         """thread for receiving the private messages"""
-
         while not self._terminating:
             try:
                 res = {}
@@ -1339,7 +1336,7 @@ class PubnubClient(BaseClient):
                         self._time_last_received = time.time()
                         self.signal_recv(self, (message))
 
-            except Exception as e:
+            except Exception:
                 self.debug("private channel interrupted")
                 #self.debug(traceback.format_exc())
                 if not self._terminating:
