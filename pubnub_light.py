@@ -2,15 +2,14 @@
 light pubnub API, avoiding unnecessary
 reconnects, only subscribing is implemented.
 (c) 2013 Bernd Kreuss
-contains code from official API (c) 2010 Stephen Blum
 """
+import base64
+from Crypto.Cipher import AES
+import hashlib
 import json
 import socket
 import uuid
 
-from Crypto.Cipher import AES
-from base64 import encodestring, decodestring
-import hashlib
 
 class SocketError(Exception):
     """thrown internally when socket read fails"""
@@ -20,7 +19,6 @@ class PubNub(): #pylint: disable=R0902
     """implements a simple pubnub client that tries to stay connected
     and is interruptible immediately (using socket instead of urllib2)"""
     def __init__(self, sub, chan, auth="", cipher=None):
-        self.pcr = PubnubCrypto()
         self.sock = None
         self.uuid = uuid.uuid4()
         self.timestamp = 0
@@ -120,87 +118,17 @@ class PubNub(): #pylint: disable=R0902
             msg = data[0]
             if self.cipher:
                 for i in range(len(msg)):
-                    msg[i] = self.pcr.decrypt(self.cipher, msg[i])
+                    msg[i] = decrypt(self.cipher, msg[i])
             return msg
         except SocketError:
             self.connected = False
             raise Exception
 
 
-
-#pylint: disable=C0103,C0322,C0324,R0201,W0232,E1101
-class PubnubCrypto() :
-    """
-    #**
-    #* PubnubCrypto
-    #* Copyright (c) 2010 Stephen Blum
-    #**
-
-    ## Initiate Class
-    pc = PubnubCrypto
-
-    """
-
-    def pad( self, msg, block_size=16 ):
-        """
-        #**
-        #* pad
-        #*
-        #* pad the text to be encrypted
-        #* appends a padding character to the end of the String
-        #* until the string has block_size length
-        #* @return msg with padding.
-        #**
-        """
-        padding = block_size - (len(msg) % block_size)
-        return msg + chr(padding)*padding
-
-    def depad( self, msg ):
-        """
-        #**
-        #* depad
-        #*
-        #* depad the decryptet message"
-        #* @return msg without padding.
-        #**
-        """
-        return msg[0:-ord(msg[-1])]
-
-    def getSecret( self, key ):
-        """
-        #**
-        #* getSecret
-        #*
-        #* hases the key to MD5
-        #* @return key in MD5 format
-        #**
-        """
-        return hashlib.sha256(key).hexdigest()
-
-    def encrypt( self, key, msg ):
-        """
-        #**
-        #* encrypt
-        #*
-        #* encrypts the message
-        #* @return message in encrypted format
-        #**
-        """
-        secret = self.getSecret(key)
-        Initial16bytes='0123456789012345'
-        cipher = AES.new(secret[0:32],AES.MODE_CBC,Initial16bytes)
-        enc = encodestring(cipher.encrypt(self.pad(msg)))
-        return enc
-    def decrypt( self, key, msg ):
-        """
-        #**
-        #* decrypt
-        #*
-        #* decrypts the message
-        #* @return message in decryped format
-        #**
-        """
-        secret = self.getSecret(key)
-        Initial16bytes='0123456789012345'
-        cipher = AES.new(secret[0:32],AES.MODE_CBC,Initial16bytes)
-        return self.depad((cipher.decrypt(decodestring(msg))))
+def decrypt(key, msg):
+    """decrypt a single pubnub message"""
+    secret = hashlib.sha256(key).hexdigest() #pylint: disable=E1101
+    initial16bytes = '0123456789012345'
+    cipher = AES.new(secret[0:32], AES.MODE_CBC, initial16bytes)
+    decrypted = cipher.decrypt(base64.decodestring(msg))
+    return decrypted[0:-ord(decrypted[-1])]
