@@ -40,6 +40,7 @@ import inspect
 import io
 import json
 import logging
+import pubnub_light
 import Queue
 import time
 import traceback
@@ -49,7 +50,6 @@ from urllib2 import urlopen, HTTPError
 from urllib import urlencode
 import weakref
 import websocket
-import Pubnub
 
 input = raw_input  # pylint: disable=W0622,C0103
 
@@ -1261,30 +1261,15 @@ class PubnubClient(BaseClient):
         self.debug("invalid attempt to use send() with Pubnub client")
 
     def _recv_thread_func(self):
-        self.debug("creating pubnub object...")
-        self._pubnub = Pubnub.Pubnub(
-            'demo',
-            'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe'
-        )
 
         # the following doesn't actually subscribe to the public channels
         # in this implementation, it only gets acct info and market data
         # and it also starts a separate thread to receive private messages
         self.channel_subscribe(True)
 
-        # Here comes the ugliness. They are using some kind of
-        # long polling, what a waste of resources, this is 1990's
-        # technology (haven't they heard of websockets yet?) Its
-        # waiting in a blocking http request and disonnecting and
-        # reconnecting AFTER EVERY GODDAMN MESSAGE, I have never seen
-        # so many syn and ack packages flying over the network before.
-        # The stupid "subscribe" call is blocking (it really shouldn't
-        # be called subscribe) and running an uninterruptible loop,
-        # doing a new connect and GET request after every message.
-        #
-        # What an enormous crap.
-        #
-        # now prepare the channel list for the public channnels
+        if not self._pubnub_priv:
+            start_thread(self._sub_private_thread, "private channel thread")
+
         chanlist = ",".join([
             CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)],
             CHANNELS['ticker.%s%s' % (self.curr_base, self.curr_quote)],
@@ -1292,56 +1277,75 @@ class PubnubClient(BaseClient):
             CHANNELS['trade.lag']
         ])
 
-        # the following will now be blocking until error occurs
-        self.debug("subscribing public channels")
-        self._pubnub.subscribe({
-           'channel'  : chanlist,
-           'auth'     : "",
-           'callback' : self._pubnub_receive
-        })
-        self.debug("### conection for public channels lost")
-        if not self._terminating:
-            start_thread(self._recv_thread_func)
+        while not self._terminating:
+            try:
+                self.debug("creating public channel pubnub client")
+                self._pubnub = pubnub_light.PubNub(
+                    'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe',
+                    chanlist
+                )
+                while not self._terminating:
+                    messages = self._pubnub.read()
+                    self._time_last_received = time.time()
+                    if not self.connected:
+                        self.connected = True
+                        self.signal_connected(self, None)
+                    for message in messages:
+                        self.signal_recv(self, (message))
+            except:
+                self.debug("public channel interrupted")
+                if not self._terminating:
+                    time.sleep(1)
+                    self.debug("public channel restarting")
+
+        self.debug("public channel thread terminated")
 
     def _sub_private_thread(self):
         """thread for receiving the private messages"""
-        res = {}
-        while True:
-            self.debug("requesting private channel auth")
-            res = self.http_signed_call("stream/private_get", {})
-            # self.debug(pretty_format(res))
-            if (not res) or (not "data" in res):
-                time.sleep(1)
-            else:
-                break
 
-        if self._pubnub_priv:
-            self.debug("killing old private pubnub")
-            self._pubnub_priv.kill
+        while not self._terminating:
+            try:
+                res = {}
+                while True:
+                    self.debug("requesting private channel auth")
+                    res = self.http_signed_call("stream/private_get", {})
+                    # self.debug(pretty_format(res))
+                    if (not res) or (not "data" in res):
+                        time.sleep(1)
+                    else:
+                        break
 
-        self.debug("init private pubnub")
-        self._pubnub_priv = Pubnub.Pubnub(
-            res["data"]["pub"],
-            res["data"]["sub"],
-            None,
-            res["data"]["cipher"],
-        )
+                if self._pubnub_priv:
+                    self.debug("update private pubnub")
+                    self._pubnub_priv.reinit(
+                        res["data"]["sub"],
+                        res["data"]["channel"],
+                        res["data"]["auth"],
+                        res["data"]["cipher"],
+                    )
+                else:
+                    self.debug("init private pubnub")
+                    self._pubnub_priv = pubnub_light.PubNub(
+                        res["data"]["sub"],
+                        res["data"]["channel"],
+                        res["data"]["auth"],
+                        res["data"]["cipher"],
+                    )
 
-        self.connected = True
-        self.signal_connected(self, None)
+                while not self._terminating:
+                    messages = self._pubnub_priv.read()
+                    for message in messages:
+                        self._time_last_received = time.time()
+                        self.signal_recv(self, (message))
 
-        self.debug("subscribe private channel")
-        # blocking
-        res = self._pubnub_priv.subscribe({
-           'channel'  : res["data"]["channel"],
-           'auth'     : res["data"]["auth"],
-           'callback' : self._pubnub_receive
-        })
-        if res == "killed":
-            self.debug("old private channel thread orderly terminated")
-        else:
-            self.debug("private channel thread unexpectedly terminated")
-            self.force_reconnect()
+            except Exception as e:
+                self.debug("private channel interrupted")
+                #self.debug(traceback.format_exc())
+                if not self._terminating:
+                    time.sleep(1)
+                    self.debug("private channel restarting")
+
+        self.debug("private channel thread terminated")
 
     def _pubnub_receive(self, msg):
         """callback method called by pubnub when a message is received"""
@@ -1357,8 +1361,9 @@ class PubnubClient(BaseClient):
             self.request_fulldepth()
             self.request_history()
 
-        if self.secret.know_secret():
-            start_thread(self._sub_private_thread, "private channel")
+        if self._pubnub_priv:
+            # force reinitialization
+            self._pubnub_priv.kill
 
         self._time_last_subscribed = time.time()
 
