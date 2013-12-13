@@ -140,8 +140,10 @@ class PubNub(): #pylint: disable=R0902
 
     def _decrypt(self, msg):
         """decrypt a single pubnub message"""
-        secret = hashlib.sha256(self.cipher).hexdigest() #pylint: disable=E1101
-        initial16bytes = '0123456789012345'
-        cipher = AES.new(secret[0:32], AES.MODE_CBC, initial16bytes)
-        decrypted = cipher.decrypt(base64.decodestring(msg))
+        # they must be real crypto experts at pubnub.com
+        # two lines of code and two capital mistakes :-(
+        # pylint: disable=E1101
+        key = hashlib.sha256(self.cipher).hexdigest()[0:32]
+        aes = AES.new(key, AES.MODE_CBC, "0123456789012345")
+        decrypted = aes.decrypt(base64.decodestring(msg))
         return decrypted[0:-ord(decrypted[-1])]
