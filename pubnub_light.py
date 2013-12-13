@@ -132,17 +132,16 @@ class PubNub(): #pylint: disable=R0902
             msg = data[0]
             if self.cipher:
                 for i in range(len(msg)):
-                    msg[i] = decrypt(self.cipher, msg[i])
+                    msg[i] = self._decrypt(msg[i])
             return msg
         except SocketError:
             self.connected = False
             raise Exception
 
-
-def decrypt(key, msg):
-    """decrypt a single pubnub message"""
-    secret = hashlib.sha256(key).hexdigest() #pylint: disable=E1101
-    initial16bytes = '0123456789012345'
-    cipher = AES.new(secret[0:32], AES.MODE_CBC, initial16bytes)
-    decrypted = cipher.decrypt(base64.decodestring(msg))
-    return decrypted[0:-ord(decrypted[-1])]
+    def _decrypt(self, msg):
+        """decrypt a single pubnub message"""
+        secret = hashlib.sha256(self.cipher).hexdigest() #pylint: disable=E1101
+        initial16bytes = '0123456789012345'
+        cipher = AES.new(secret[0:32], AES.MODE_CBC, initial16bytes)
+        decrypted = cipher.decrypt(base64.decodestring(msg))
+        return decrypted[0:-ord(decrypted[-1])]
