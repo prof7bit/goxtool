@@ -1363,7 +1363,7 @@ class PubnubClient(BaseClient):
 
         if self._pubnub_priv:
             # force reinitialization
-            self._pubnub_priv.kill
+            self._pubnub_priv.kill()
 
         self._time_last_subscribed = time.time()
 
