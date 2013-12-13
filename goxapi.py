@@ -1263,6 +1263,7 @@ class PubnubClient(BaseClient):
     def _recv_thread_func(self):
         # the following doesn't actually subscribe to the public channels
         # in this implementation, it only gets acct info and market data
+        use_ssl = self.config.get_bool("gox", "use_ssl")
         self.channel_subscribe(True)
 
         if not self._pubnub_priv:
@@ -1281,7 +1282,10 @@ class PubnubClient(BaseClient):
                 self.debug("creating public channel pubnub client")
                 self._pubnub = pubnub_light.PubNub(
                     'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe',
-                    chanlist
+                    chanlist,
+                    "",
+                    "",
+                    use_ssl
                 )
                 while not self._terminating:
                     messages = self._pubnub.read()
@@ -1301,6 +1305,7 @@ class PubnubClient(BaseClient):
 
     def _sub_private_thread(self):
         """thread for receiving the private messages"""
+        use_ssl = self.config.get_bool("gox", "use_ssl")
         while not self._terminating:
             try:
                 res = {}
@@ -1320,6 +1325,7 @@ class PubnubClient(BaseClient):
                         res["data"]["channel"],
                         res["data"]["auth"],
                         res["data"]["cipher"],
+                        use_ssl
                     )
                 else:
                     self.debug("init private pubnub")
@@ -1328,6 +1334,7 @@ class PubnubClient(BaseClient):
                         res["data"]["channel"],
                         res["data"]["auth"],
                         res["data"]["cipher"],
+                        use_ssl
                     )
 
                 while not self._terminating:

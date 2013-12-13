@@ -29,10 +29,31 @@ class SocketError(Exception):
     """thrown internally when socket read fails"""
     pass
 
+
+class _SSLSocketWrapper():
+    def __init__(self, sock):
+        self.sock = sock
+        self.ssl = socket.ssl(sock)
+
+    def recv(self, bufsize):
+        return self.ssl.read(bufsize)
+
+    def send(self, payload):
+        return self.ssl.write(payload)
+
+    def shutdown(self, mode):
+        self.sock.shutdown(mode)
+
+    def close(self):
+        self.sock.close()
+        self.ssl = None
+        self.sock = None
+
+
 class PubNub(): #pylint: disable=R0902
     """implements a simple pubnub client that tries to stay connected
     and is interruptible immediately (using socket instead of urllib2)"""
-    def __init__(self, sub, chan, auth="", cipher=None):
+    def __init__(self, sub, chan, auth="", cipher="", ssl=False):
         self.sock = None
         self.uuid = uuid.uuid4()
         self.timestamp = 0
@@ -40,15 +61,17 @@ class PubNub(): #pylint: disable=R0902
         self.chan = chan
         self.auth = auth
         self.cipher = cipher
+        self.ssl = ssl
         self.connected = False
         self.killed = False
 
-    def reinit(self, sub, chan, auth="", cipher=None):
+    def reinit(self, sub, chan, auth="", cipher="", ssl=False):
         """set new subscription parameters, and and reset kill flag"""
         self.sub = sub
         self.chan = chan
         self.auth = auth
         self.cipher = cipher
+        self.ssl = ssl
         self.killed = False
 
     def kill(self):
@@ -92,7 +115,11 @@ class PubNub(): #pylint: disable=R0902
     def _connect(self):
         """connect, send request, read header and return Content-Length"""
         self.sock = socket.socket()
-        self.sock.connect(("pubsub.pubnub.com", 80))
+        if self.ssl:
+            self.sock.connect(("pubsub.pubnub.com", 443))
+            self.sock = _SSLSocketWrapper(self.sock)
+        else:
+            self.sock.connect(("pubsub.pubnub.com", 80))
         return self._send_request()
 
     def _read_num_bytes(self, size):
