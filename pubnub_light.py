@@ -20,6 +20,7 @@ class PubNub(): #pylint: disable=R0902
     """implements a simple pubnub client that tries to stay connected
     and is interruptible immediately (using socket instead of urllib2)"""
     def __init__(self, sub, chan, auth="", cipher=None):
+        self.pcr = PubnubCrypto()
         self.sock = None
         self.uuid = uuid.uuid4()
         self.timestamp = 0
@@ -119,16 +120,12 @@ class PubNub(): #pylint: disable=R0902
             msg = data[0]
             if self.cipher:
                 for i in range(len(msg)):
-                    msg[i] = self._decrypt(msg[i])
+                    msg[i] = self.pcr.decrypt(self.cipher, msg[i])
             return msg
         except SocketError:
             self.connected = False
             raise Exception
 
-    def _decrypt(self, message):
-        """decrypt a single message"""
-        pcr = PubnubCrypto()
-        return pcr.decrypt(self.cipher, message)
 
 
 #pylint: disable=C0103,C0322,C0324,R0201,W0232,E1101
