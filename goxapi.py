@@ -1306,10 +1306,14 @@ class PubnubClient(BaseClient):
     def _sub_private_thread(self):
         """thread for receiving the private messages"""
         res = {}
-        while (not res) or (not "data" in res):
+        while True:
             self.debug("requesting private channel auth")
             res = self.http_signed_call("stream/private_get", {})
             # self.debug(pretty_format(res))
+            if (not res) or (not "data" in res):
+                time.sleep(1)
+            else:
+                break
 
         if self._pubnub_priv:
             self.debug("killing old private pubnub")
