@@ -1248,9 +1248,18 @@ class PubnubClient(BaseClient):
         self._pubnub = None
         self._pubnub_priv = None
 
+    def stop(self):
+        """stop the client"""
+        self._terminating = True
+        self._timer.cancel()
+        self.force_reconnect()
+
     def force_reconnect(self):
         self.connected = False
         self.signal_disconnected(self, None)
+        # as long as the _terinating flag is not set
+        # a kill() will just make them reconnect,
+        # the same way a network failure would do.
         if self._pubnub_priv:
             self._pubnub_priv.kill()
         if self._pubnub:
