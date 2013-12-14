@@ -67,6 +67,9 @@ HTTP_HOST = "data.mtgox.com"
 
 USER_AGENT = "goxtool.py"
 
+# available channels as per https://mtgox.com/api/2/stream/list_public?pretty
+# queried on 2013-12-14 - this must be updated when they add new currencies,
+# I'm too lazy now to do that dynamically, it doesn't change often (if ever)
 CHANNELS = {
         "ticker.LTCGBP": "0102a446-e4d4-4082-8e83-cc02822f9172",
         "ticker.LTCCNY": "0290378c-e3d7-4836-8cb1-2bfae20cc492",
@@ -1846,7 +1849,7 @@ class Gox(BaseObject):
             return
         if msg["trade"]["item"] != self.curr_base:
             return
-        if msg["channel"] == "dbf1dee9-4f2e-4a08-8cb7-748919a71b21":
+        if msg["channel"] == CHANNELS["trade.%s" % self.curr_base]:
             own = False
         else:
             own = True
