@@ -132,8 +132,8 @@ class PubNub(): #pylint: disable=R0902
     def _read_num_bytes(self, size):
         """read exactly size bytes from socket, raise SocketError if error"""
         buf = ""
-        while not len(buf) == size:
-            chunk = self.sock.recv(size)
+        while len(buf) < size:
+            chunk = self.sock.recv(size - len(buf))
             if chunk == "":
                 self.sock.close()
                 raise SocketError
