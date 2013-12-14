@@ -1243,10 +1243,10 @@ class PubnubClient(BaseClient):
     def __init__(self, curr_base, curr_quote, secret, config):
         global FORCE_HTTP_API #pylint: disable=W0603
         FORCE_HTTP_API = True
-        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
         self._pubnub = None
         self._pubnub_priv = None
         self._private_thread_started = False
+        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
 
     def stop(self):
         """stop the client"""
