@@ -1237,9 +1237,9 @@ class SocketIO(websocket.WebSocket):
 
 class PubnubClient(BaseClient):
     """"This implements the pubnub client. This client cannot send trade
-    requests, its strictly for receiving streaming data (public and private),
-    therefore all interaction with MtGox has to happen through http(s) api,
-    this client will enforce this flag to be set automatically."""
+    requests over the streamin API, therefore all interaction with MtGox has
+    to happen through http(s) api, this client will enforce this flag to be
+    set automatically."""
     def __init__(self, curr_base, curr_quote, secret, config):
         global FORCE_HTTP_API #pylint: disable=W0603
         FORCE_HTTP_API = True
