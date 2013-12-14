@@ -1080,6 +1080,10 @@ class BaseClient(BaseObject):
             api = "order/cancel"
             self.send_signed_call(api, params, reqid)
 
+    def on_idkey_received(self, data):
+        """id key was received, subscribe to private channel"""
+        self.send(json.dumps({"op":"mtgox.subscribe", "key":data}))
+
     def slot_timer(self, _sender, _data):
         """check timeout (last received, dead socket?)"""
         if self.connected:
@@ -1270,14 +1274,12 @@ class PubnubClient(BaseClient):
         self.debug("invalid attempt to use send() with Pubnub client")
 
     def _recv_thread_func(self):
+        use_ssl = self.config.get_bool("gox", "use_ssl")
+
         # the following doesn't actually subscribe to the public channels
         # in this implementation, it only gets acct info and market data
-        use_ssl = self.config.get_bool("gox", "use_ssl")
+        # and enqueue a request for the pricate channel auth credentials
         self.channel_subscribe(True)
-
-        if not self._pubnub_priv:
-            if self.secret and self.secret.know_secret():
-                start_thread(self._sub_private_thread, "private channel thread")
 
         chanlist = ",".join([
             CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)],
@@ -1287,15 +1289,15 @@ class PubnubClient(BaseClient):
         ])
 
         while not self._terminating:
+            self.debug("creating public channel pubnub client")
+            self._pubnub = pubnub_light.PubNub(
+                'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe',
+                chanlist,
+                "",
+                "",
+                use_ssl
+            )
             try:
-                self.debug("creating public channel pubnub client")
-                self._pubnub = pubnub_light.PubNub(
-                    'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe',
-                    chanlist,
-                    "",
-                    "",
-                    use_ssl
-                )
                 while not self._terminating:
                     messages = self._pubnub.read()
                     self._time_last_received = time.time()
@@ -1314,42 +1316,13 @@ class PubnubClient(BaseClient):
 
     def _sub_private_thread(self):
         """thread for receiving the private messages"""
-        use_ssl = self.config.get_bool("gox", "use_ssl")
+        self.debug("private channel thread starting")
         while not self._terminating:
             try:
-                res = {}
-                while True:
-                    self.debug("requesting private channel auth")
-                    res = self.http_signed_call("stream/private_get", {})
-                    # self.debug(pretty_format(res))
-                    if (not res) or (not "data" in res):
-                        time.sleep(1)
-                    else:
-                        break
-
-                if self._pubnub_priv:
-                    self.debug("update private pubnub")
-                    self._pubnub_priv.reinit(
-                        res["data"]["sub"],
-                        res["data"]["channel"],
-                        res["data"]["auth"],
-                        res["data"]["cipher"],
-                        use_ssl
-                    )
-                else:
-                    self.debug("init private pubnub")
-                    self._pubnub_priv = pubnub_light.PubNub(
-                        res["data"]["sub"],
-                        res["data"]["channel"],
-                        res["data"]["auth"],
-                        res["data"]["cipher"],
-                        use_ssl
-                    )
-
                 while not self._terminating:
                     messages = self._pubnub_priv.read()
+                    self._time_last_received = time.time()
                     for message in messages:
-                        self._time_last_received = time.time()
                         self.signal_recv(self, (message))
 
             except Exception:
@@ -1369,17 +1342,38 @@ class PubnubClient(BaseClient):
 
     def channel_subscribe(self, download_market_data=False):
         # no channels to subscribe, this happened on connect already
+        if self.secret and self.secret.know_secret():
+            self.enqueue_http_request("stream/private_get", {}, "idkey")
         self.request_info()
         self.request_orders()
         if download_market_data:
             self.request_fulldepth()
             self.request_history()
-
-        if self._pubnub_priv:
-            # force reinitialization
-            self._pubnub_priv.kill()
-
         self._time_last_subscribed = time.time()
+
+    def on_idkey_received(self, data):
+        use_ssl = self.config.get_bool("gox", "use_ssl")
+        if self._pubnub_priv:
+            self.debug("update private pubnub")
+            self._pubnub_priv.kill()
+            self._pubnub_priv.reinit(
+                data["sub"],
+                data["channel"],
+                data["auth"],
+                data["cipher"],
+                use_ssl
+            )
+        else:
+            self.debug("init private pubnub")
+            self._pubnub_priv = pubnub_light.PubNub(
+                data["sub"],
+                data["channel"],
+                data["auth"],
+                data["cipher"],
+                use_ssl
+            )
+            start_thread(self._sub_private_thread, "private channel thread")
+
 
 
 class SocketIOClient(BaseClient):
@@ -1651,8 +1645,6 @@ class Gox(BaseObject):
         need_no_history = not self.config.get_bool("gox", "load_history")
         need_no_depth = need_no_depth or FORCE_NO_FULLDEPTH
         need_no_history = need_no_history or FORCE_NO_HISTORY
-        if isinstance(self.client, PubnubClient):
-            self.ready_idkey = True
         ready_account = \
             self.ready_idkey and self.ready_info and self.orderbook.ready_owns
         if ready_account or need_no_account:
@@ -1743,7 +1735,7 @@ class Gox(BaseObject):
         if reqid == "idkey":
             self.debug("### got key, subscribing to account messages")
             self._idkey = result
-            self.client.send(json.dumps({"op":"mtgox.subscribe", "key":result}))
+            self.client.on_idkey_received(result)
             self.ready_idkey = True
             self.check_connect_ready()
 
