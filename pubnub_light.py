@@ -58,37 +58,41 @@ class _SSLSocketWrapper():
 class PubNub(): #pylint: disable=R0902
     """implements a simple pubnub client that tries to stay connected
     and is interruptible immediately (using socket instead of urllib2)"""
-    #pylint: disable=R0913
-    def __init__(self, sub, chan, auth="", cipher="", ssl=False):
+    def __init__(self):
         self.sock = None
         self.uuid = uuid.uuid4()
         self.timestamp = 0
-        self.sub = sub
-        self.chan = chan
-        self.auth = auth
-        self.cipher = cipher
-        self.ssl = ssl
         self.connected = False
-        self.killed = False
+        self.sub = ""
+        self.chan = ""
+        self.auth = ""
+        self.cipher = ""
+        self.ssl = False
 
     #pylint: disable=R0913
-    def reinit(self, sub, chan, auth="", cipher="", ssl=False):
-        """set new subscription parameters, and and reset kill flag"""
+    def subscribe(self, sub, chan, auth="", cipher="", ssl=False):
+        """set the subscription parameters. This is needed after __init__().
+        chan is a string containing a channel name or a comma separated list of
+        multiple cannels, it will replace all previously set subscriptions."""
         self.sub = sub
         self.chan = chan
         self.auth = auth
         self.cipher = cipher
         self.ssl = ssl
-        self.killed = False
+
+        # force disconnect of currently active longpoll.
+        self.kill()
 
     def kill(self):
-        """set kill flag and close socket.
-        read() method will then immediately raise exception in its thread
-        and also any subsequent attempt to read(). Can be reset by reinit()"""
-        self.killed = True
-        self.connected = False
-        self.sock.shutdown(2)
-        self.sock.close()
+        """close socket and force the blocking read() to exit with an Exception.
+        Usually the thread in your app that does the read() will then have
+        the opportunity to decide whether to re-enter the read() because you
+        only set new subscription parameters or to terminate becase you want
+        to shut down the client completely."""
+        if self.connected:
+            self.connected = False
+            self.sock.shutdown(2)
+            self.sock.close()
 
     def _send_request(self):
         """send http request, read response header and return Content-Length"""
@@ -144,8 +148,6 @@ class PubNub(): #pylint: disable=R0902
         """read blocking and return list of messages. if disconnected
         then automatically (re)connect. Throws exception if killed or
         socket error occurs."""
-        if self.killed:
-            raise Exception
         if not self.connected:
             try:
                 size = self._connect()

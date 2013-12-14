@@ -1246,6 +1246,7 @@ class PubnubClient(BaseClient):
         BaseClient.__init__(self, curr_base, curr_quote, secret, config)
         self._pubnub = None
         self._pubnub_priv = None
+        self._private_thread_started = False
 
     def stop(self):
         """stop the client"""
@@ -1269,29 +1270,27 @@ class PubnubClient(BaseClient):
         self.debug("invalid attempt to use send() with Pubnub client")
 
     def _recv_thread_func(self):
-        use_ssl = self.config.get_bool("gox", "use_ssl")
+        self._pubnub = pubnub_light.PubNub()
+        self._pubnub.subscribe(
+            'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe',
+            ",".join([
+                CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)],
+                CHANNELS['ticker.%s%s' % (self.curr_base, self.curr_quote)],
+                CHANNELS['trade.%s' % self.curr_base],
+                CHANNELS['trade.lag']
+            ]),
+            "",
+            "",
+            self.config.get_bool("gox", "use_ssl")
+        )
 
         # the following doesn't actually subscribe to the public channels
         # in this implementation, it only gets acct info and market data
         # and enqueue a request for the pricate channel auth credentials
         self.channel_subscribe(True)
 
-        chanlist = ",".join([
-            CHANNELS['depth.%s%s' % (self.curr_base, self.curr_quote)],
-            CHANNELS['ticker.%s%s' % (self.curr_base, self.curr_quote)],
-            CHANNELS['trade.%s' % self.curr_base],
-            CHANNELS['trade.lag']
-        ])
-
+        self.debug("starting public channel pubnub client")
         while not self._terminating:
-            self.debug("creating public channel pubnub client")
-            self._pubnub = pubnub_light.PubNub(
-                'sub-c-50d56e1e-2fd9-11e3-a041-02ee2ddab7fe',
-                chanlist,
-                "",
-                "",
-                use_ssl
-            )
             try:
                 while not self._terminating:
                     messages = self._pubnub.read()
@@ -1309,7 +1308,7 @@ class PubnubClient(BaseClient):
 
         self.debug("public channel thread terminated")
 
-    def _sub_private_thread(self):
+    def _recv_private_thread_func(self):
         """thread for receiving the private messages"""
         self.debug("private channel thread starting")
         while not self._terminating:
@@ -1347,27 +1346,21 @@ class PubnubClient(BaseClient):
         self._time_last_subscribed = time.time()
 
     def on_idkey_received(self, data):
-        use_ssl = self.config.get_bool("gox", "use_ssl")
-        if self._pubnub_priv:
-            self.debug("update private pubnub")
-            self._pubnub_priv.kill()
-            self._pubnub_priv.reinit(
-                data["sub"],
-                data["channel"],
-                data["auth"],
-                data["cipher"],
-                use_ssl
-            )
-        else:
+        if not self._pubnub_priv:
             self.debug("init private pubnub")
-            self._pubnub_priv = pubnub_light.PubNub(
-                data["sub"],
-                data["channel"],
-                data["auth"],
-                data["cipher"],
-                use_ssl
-            )
-            start_thread(self._sub_private_thread, "private channel thread")
+            self._pubnub_priv = pubnub_light.PubNub()
+
+        self._pubnub_priv.subscribe(
+            data["sub"],
+            data["channel"],
+            data["auth"],
+            data["cipher"],
+            self.config.get_bool("gox", "use_ssl")
+        )
+
+        if not self._private_thread_started:
+            start_thread(self._recv_private_thread_func, "private channel thread")
+            self._private_thread_started = True
 
 
 
