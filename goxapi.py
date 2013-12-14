@@ -1233,18 +1233,10 @@ class SocketIO(websocket.WebSocket):
 
 
 class PubnubClient(BaseClient):
-    """"this implements the pubnub client.
-
-    THIS IS ALL INCOMPLETE AND ITS A TOTAL MESS
-    BECAUSE I NEEDED TO HACK THIS IN A HURRY.
-
-    THE Pubnub.py MODULE WAS PATCHED BY ME TO
-    MAKE AUTH AND DECRYPTION WORK, DIFF AGAINST
-    ORIGINAL TO SEE WAHT I DID.
-
-    INVOKE THIS CLIENT WITH --protocol=pubnub
-    """
-
+    """"This implements the pubnub client. This client cannot send trade
+    requests, its strictly for receiving streaming data (public and private),
+    therefore all interaction with MtGox has to happen through http(s) api,
+    this client will enforce this flag to be set automatically."""
     def __init__(self, curr_base, curr_quote, secret, config):
         global FORCE_HTTP_API #pylint: disable=W0603
         FORCE_HTTP_API = True
@@ -1341,7 +1333,7 @@ class PubnubClient(BaseClient):
         return not self._terminating
 
     def channel_subscribe(self, download_market_data=False):
-        # no channels to subscribe, this happened on connect already
+        # no channels to subscribe, this happened in PubNub.__init__ already
         if self.secret and self.secret.know_secret():
             self.enqueue_http_request("stream/private_get", {}, "idkey")
         self.request_info()
