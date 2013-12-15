@@ -65,7 +65,7 @@ class PubNub(): #pylint: disable=R0902
         """read (blocking) and return list of messages. Right after subscribe()
         you should enter a loop over this blocking read() call to read messages
         from the subscribed channels. It will raise an exception if interrupted
-        (for example by hup() or by subscribe() or if something goes wrong,
+        (for example by hup() or by subscribe() or if something goes wrong),
         so you should catch exceptions and then decide whether to re-enter your
         loop because you merely called subscribe() again or whether you want
         to terminate because your application ends.
