@@ -27,9 +27,9 @@ import uuid
 
 
 class SocketClosedException(Exception):
-    """raised when socket read fails. Thiis normally happens when the
+    """raised when socket read fails. This normally happens when the
     hup() method is invoked, your thread that loops over read() should
-    catch this exception and then decide whether to retry or termnate"""
+    catch this exception and then decide whether to retry or terminate"""
     pass
 
 
