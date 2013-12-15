@@ -93,6 +93,19 @@ class PubNub(): #pylint: disable=R0902
             self.sock.shutdown(2)
             self.sock.close()
 
+    def _connect(self):
+        """connect and set self.connected flag, raise exception if error.
+        This method is used internally, you don't explicitly call it yourself,
+        the read() method will invoke it automatically if necessary."""
+        self.sock = socket.socket()
+        host = "pubsub.pubnub.com"
+        port = 80
+        if self.use_ssl:
+            self.sock = ssl.wrap_socket(self.sock)
+            port = 443
+        self.sock.connect((host, port))
+        self.connected = True
+
     def _send_request(self):
         """send http request, read response header and return Content-Length."""
         headers = [
@@ -123,19 +136,6 @@ class PubNub(): #pylint: disable=R0902
                 self.connected = False
                 self.sock.close()
                 raise SocketClosedException
-
-    def _connect(self):
-        """connect and set self.connected flag, raise exception if error.
-        This method is used internally, you don't explicitly call it yourself,
-        the read() method will invoke it automatically if necessary."""
-        self.sock = socket.socket()
-        host = "pubsub.pubnub.com"
-        port = 80
-        if self.use_ssl:
-            self.sock = ssl.wrap_socket(self.sock)
-            port = 443
-        self.sock.connect((host, port))
-        self.connected = True
 
     def _read_num_bytes(self, num):
         """read (blocking) exactly num bytes from socket,
