@@ -755,7 +755,7 @@ class BaseClient(BaseObject):
         self._terminating = True
         self._timer.cancel()
         if self.socket:
-            self.debug("""closing socket""")
+            self.debug("### closing socket")
             self.socket.sock.close()
 
     def force_reconnect(self):
@@ -810,7 +810,7 @@ class BaseClient(BaseObject):
             """request the full market depth, initialize the order book
             and then terminate. This is called in a separate thread after
             the streaming API has been connected."""
-            self.debug("requesting initial full depth")
+            self.debug("### requesting initial full depth")
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
             fulldepth = http_request("%s://%s/api/2/%s%s/money/depth/full" % (
@@ -841,7 +841,7 @@ class BaseClient(BaseObject):
             else:
                 querystring = ""
 
-            self.debug("requesting history")
+            self.debug("### requesting history")
             use_ssl = self.config.get_bool("gox", "use_ssl")
             proto = {True: "https", False: "http"}[use_ssl]
             json_hist = http_request("%s://%s/api/2/%s%s/money/trades%s" % (
@@ -1091,7 +1091,7 @@ class BaseClient(BaseObject):
         """check timeout (last received, dead socket?)"""
         if self.connected:
             if time.time() - self._time_last_received > 60:
-                self.debug("did not receive anything for a long time, disconnecting.")
+                self.debug("### did not receive anything for a long time, disconnecting.")
                 self.force_reconnect()
                 self.connected = False
             if time.time() - self._time_last_subscribed > 1800:
@@ -1137,7 +1137,7 @@ class WebsocketClient(BaseClient):
                 else:
                     ws_url = "%s%s?Channel=ticker.%s" % \
                     (wsp, self.hostname, sym)
-                self.debug("trying plain old Websocket: %s ... " % ws_url)
+                self.debug("### trying plain old Websocket: %s ... " % ws_url)
 
                 self.socket = websocket.WebSocket()
                 # The server is somewhat picky when it comes to the exact
@@ -1146,9 +1146,9 @@ class WebsocketClient(BaseClient):
                 self.socket.connect(ws_url, origin=ws_origin, header=ws_headers)
                 self._time_last_received = time.time()
                 self.connected = True
-                self.debug("connected, subscribing needed channels")
+                self.debug("### connected, subscribing needed channels")
                 self.channel_subscribe()
-                self.debug("waiting for data...")
+                self.debug("### waiting for data...")
                 self.signal_connected(self, None)
                 while not self._terminating: #loop1 (read messages)
                     str_json = self.socket.recv()
@@ -1160,7 +1160,7 @@ class WebsocketClient(BaseClient):
                 self.connected = False
                 self.signal_disconnected(self, None)
                 if not self._terminating:
-                    self.debug(exc.__class__.__name__, exc,
+                    self.debug("### ", exc.__class__.__name__, exc,
                         "reconnecting in %i seconds..." % reconnect_time)
                     if self.socket:
                         self.socket.close()
@@ -1267,7 +1267,7 @@ class PubnubClient(BaseClient):
 
     def send(self, _msg):
         # can't send with this client,
-        self.debug("invalid attempt to use send() with Pubnub client")
+        self.debug("### invalid attempt to use send() with Pubnub client")
 
     def _recv_thread_func(self):
         self._pubnub = pubnub_light.PubNub()
@@ -1289,7 +1289,7 @@ class PubnubClient(BaseClient):
         # and enqueue a request for the pricate channel auth credentials
         self.channel_subscribe(True)
 
-        self.debug("starting public channel pubnub client")
+        self.debug("### starting public channel pubnub client")
         while not self._terminating:
             try:
                 while not self._terminating:
@@ -1301,16 +1301,16 @@ class PubnubClient(BaseClient):
                     for message in messages:
                         self.signal_recv(self, (message))
             except Exception:
-                self.debug("public channel interrupted")
+                self.debug("### public channel interrupted")
                 if not self._terminating:
                     time.sleep(1)
-                    self.debug("public channel restarting")
+                    self.debug("### public channel restarting")
 
-        self.debug("public channel thread terminated")
+        self.debug("### public channel thread terminated")
 
     def _recv_private_thread_func(self):
         """thread for receiving the private messages"""
-        self.debug("private channel thread starting")
+        self.debug("### starting private channel pubnub client")
         while not self._terminating:
             try:
                 while not self._terminating:
@@ -1320,13 +1320,13 @@ class PubnubClient(BaseClient):
                         self.signal_recv(self, (message))
 
             except Exception:
-                self.debug("private channel interrupted")
+                self.debug("### private channel interrupted")
                 #self.debug(traceback.format_exc())
                 if not self._terminating:
                     time.sleep(1)
-                    self.debug("private channel restarting")
+                    self.debug("### private channel restarting")
 
-        self.debug("private channel thread terminated")
+        self.debug("### private channel thread terminated")
 
     def _pubnub_receive(self, msg):
         """callback method called by pubnub when a message is received"""
@@ -1347,7 +1347,7 @@ class PubnubClient(BaseClient):
 
     def on_idkey_received(self, data):
         if not self._pubnub_priv:
-            self.debug("init private pubnub")
+            self.debug("### init private pubnub")
             self._pubnub_priv = pubnub_light.PubNub()
 
         self._pubnub_priv.subscribe(
@@ -1391,22 +1391,22 @@ class SocketIOClient(BaseClient):
                     querystring = "Channel=depth.%s/ticker.%s" % (sym, sym)
                 else:
                     querystring = "Channel=ticker.%s" % (sym)
-                self.debug("trying Socket.IO: %s?%s ..." % (url, querystring))
+                self.debug("### trying Socket.IO: %s?%s ..." % (url, querystring))
                 self.socket = SocketIO()
                 self.socket.connect(url, query=querystring)
 
                 self._time_last_received = time.time()
                 self.connected = True
-                self.debug("connected")
+                self.debug("### connected")
                 self.socket.send("1::/mtgox")
 
                 self.debug(self.socket.recv())
                 self.debug(self.socket.recv())
 
-                self.debug("subscribing to channels")
+                self.debug("### subscribing to channels")
                 self.channel_subscribe()
 
-                self.debug("waiting for data...")
+                self.debug("### waiting for data...")
                 self.signal_connected(self, None)
                 while not self._terminating: #loop1 (read messages)
                     msg = self.socket.recv()
@@ -1425,7 +1425,7 @@ class SocketIOClient(BaseClient):
                 self.connected = False
                 self.signal_disconnected(self, None)
                 if not self._terminating:
-                    self.debug(exc.__class__.__name__, exc, \
+                    self.debug("### ", exc.__class__.__name__, exc, \
                         "reconnecting in 1 seconds...")
                     self.socket.close()
                     time.sleep(1)
@@ -1440,7 +1440,7 @@ class SocketIOClient(BaseClient):
     def slot_keepalive_timer(self, _sender, _data):
         """send a keepalive, just to make sure our socket is not dead"""
         if self.connected:
-            self.debug("sending keepalive")
+            self.debug("### sending keepalive")
             self._try_send_raw("2::")
 
 
@@ -1555,13 +1555,13 @@ class Gox(BaseObject):
 
     def start(self):
         """connect to MtGox and start receiving events."""
-        self.debug("starting gox streaming API, trading %s%s" %
+        self.debug("### starting gox streaming API, trading %s%s" %
             (self.curr_base, self.curr_quote))
         self.client.start()
 
     def stop(self):
         """shutdown the client"""
-        self.debug("shutdown...")
+        self.debug("### shutdown...")
         self.client.stop()
 
     def order(self, typ, price, volume):
@@ -1709,11 +1709,11 @@ class Gox(BaseObject):
 
     def _on_op_error(self, msg):
         """handle error mesages (op:error)"""
-        self.debug("_on_op_error()", msg)
+        self.debug("### _on_op_error()", msg)
 
     def _on_op_subscribe(self, msg):
         """handle subscribe messages (op:subscribe)"""
-        self.debug("subscribed channel", msg["channel"])
+        self.debug("### subscribed channel", msg["channel"])
 
     def _on_op_result(self, msg):
         """handle result of authenticated API call (op:result, id:xxxxxx)"""
@@ -1778,7 +1778,7 @@ class Gox(BaseObject):
             self.debug("### got ack for order/cancel:", oid)
 
         else:
-            self.debug("_on_op_result() ignoring:", msg)
+            self.debug("### _on_op_result() ignoring:", msg)
 
     def _on_op_private(self, msg):
         """handle op=private messages, these are the messages of the channels
@@ -1789,7 +1789,7 @@ class Gox(BaseObject):
         try:
             handler = getattr(self, "_on_op_private_" + private)
         except AttributeError:
-            self.debug("_on_op_private() ignoring: private=%s" % private)
+            self.debug("### _on_op_private() ignoring: private=%s" % private)
             self.debug(pretty_format(msg))
 
         if handler:
@@ -1985,7 +1985,7 @@ class Gox(BaseObject):
             self.client.send_order_cancel(oid)
 
         else:
-            self.debug("_on_invalid_call() ignoring:", msg)
+            self.debug("### _on_invalid_call() ignoring:", msg)
 
     def _on_order_not_found(self, msg):
         """this means we have sent order/cancel with non-existing oid"""
@@ -2000,12 +2000,12 @@ class Gox(BaseObject):
 
     def _on_order_amount_too_low(self, _msg):
         """we received an order_amount too low message."""
-        self.debug("Server said: 'Order amount is too low'")
+        self.debug("### Server said: 'Order amount is too low'")
         self.count_submitted -= 1
 
     def _on_too_many_orders(self, msg):
         """server complains too many orders were placd too fast"""
-        self.debug("Server said: '%s" % msg["message"])
+        self.debug("### Server said: '%s" % msg["message"])
         self.count_submitted -= 1
         self.signal_order_too_fast(self, msg)
 
