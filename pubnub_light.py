@@ -86,7 +86,7 @@ class PubNub(): #pylint: disable=R0902
         """close socket and force the blocking read() to exit with an Exception.
         Usually the thread in your app that does the read() will then have
         the opportunity to decide whether to re-enter the read() because you
-        only set new subscription parameters or to terminate becase you want
+        only set new subscription parameters or to terminate because you want
         to shut down the client completely."""
         if self.sock:
             self.connected = False
