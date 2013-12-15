@@ -89,44 +89,59 @@ trade BTC against or some parameters regarding the network protocol. Some of
 the <span class="codeword">.ini</span> settings can be overridden by command
 line options (use the <span class="codeword">--help</span> option to see a
 list). The default protocol is <span class="codeword">websocket</span>, the
-alternative would be <span class="codeword">socketio</span>, goxtool
-implements both protocols, the websocket server is currently more reliable.
-There is also an option to use the http API for trading commands, the default
-is to send all commands to the streaming socket, this affects only what happens
-when you buy/sell/cancel, it does not affect the streaming update of order book
-and chart.</p>
+alternative would be <span class="codeword">socketio</span> (and also recently
+added <span class="codeword">pubnub</span>), goxtool implements all three
+protocols, the websocket server is currently more reliable. There is also an
+option to use the http API for trading commands instead sending them over the
+stream connection.</p>
 
-<h3>socketio or websocket? Which one is worse?</h3>
+<h3>socketio, websocket or pubnub? Which one is worse?</h3>
 
-<p>The two options are <span class="codeword">socketio</span> or <span
-class="codeword">websocket</span>, the .ini setting for this is <span
-class="codeword">use_plain_old_websocket</span>. To force it connecting with
-socketio:<br />
+<p>The three options are <span class="codeword">socketio,</span> <span
+class="codeword">websocket</span> or <span class="codeword">pubnub</span>, the
+.ini setting for this is <span class="codeword">use_plain_old_websocket</span>
+to select between socketio or websocket, there is not yet an ini setting for
+pubnub, this will change in the near future. The protocol can also be forced on
+the command line and will take precedence over whatever is set in the ini.</p>
+
+<p>To force it connecting with socketio:<br />
 </p>
 <pre>./goxtool.py --protocol=socketio</pre>
 
-<p> To force it connecting to the websocket server do this:<br />
+<p> To force it connecting to the websocket server:<br />
 </p>
 <pre>./goxtool.py --protocol=websocket</pre>
 
-<p>It has turned out that websocket is currently the most reliable protocol.
-These options on the command line take precedence over what you have configured
-in the .ini file (but it won't change your .ini), you can make websocket the
-default (so you don't need this option anymore) by editing the ini file.<br />
+<p> To force it connecting to the pubnub server:<br />
+</p>
+<pre>./goxtool.py --protocol=pubnub</pre>
+
+<p>It has turned out that websocket is currently the most reliable protocol,
+although the recently added new pubnub protocol might eventually take its place
+(it still has some problems occasionally, pubnub is conceptually inferior to
+websocket and producing twice as much network load and the MtGox pubnub also
+does not allow sending trading commands over the stream connection, so using
+pubnub will also automatically enable the http API for trading commands)<br />
 <br />
 If you experience a high lag between sending an order and the ack (the
 op:result) not appearing immediately which is happening during times of really
-high volume then you should consider also adding <span
+high volume (only websocket and socketio are affected) or mysteriously lost
+(ignored) trading commands then you should consider also adding <span
 class="codeword">--use-http</span> to make it send trading commands via http.
 Http makes it slightly slower to execute many trades in a row but has been much
 more reliable when mtgox was under heavy load or ddos or similar. If you don't
 need to send many orders very fast then this option won't hurt. <span
 class="codeword">--use-http</span> can be combined with either <span
-class="codeword">socketio</span> or <span
-class="codeword">websocket</span>.<br />
+class="codeword">socketio</span> or <span class="codeword">websocket</span>.
+It is always automatically activated when using <span
+class="codeword">pubnub</span>. You can also make it the default in the ini
+file.<br />
 <br />
-The following is what I am currently using and I recommend it: </p>
+This is what I am currently using and I recommend it: </p>
 <pre>./goxtool.py --protocol=websocket --use-http</pre>
+
+<p>When websocket is down due to ddos then I recommend the following: </p>
+<pre>./goxtool.py --protocol=pubnub</pre>
 
 <h2>How to connect it to your MtGox account</h2>
 
