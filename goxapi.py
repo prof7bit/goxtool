@@ -1258,12 +1258,12 @@ class PubnubClient(BaseClient):
         self.connected = False
         self.signal_disconnected(self, None)
         # as long as the _terinating flag is not set
-        # a kill() will just make them reconnect,
+        # a hup() will just make them reconnect,
         # the same way a network failure would do.
         if self._pubnub_priv:
-            self._pubnub_priv.kill()
+            self._pubnub_priv.hup()
         if self._pubnub:
-            self._pubnub.kill()
+            self._pubnub.hup()
 
     def send(self, _msg):
         # can't send with this client,
