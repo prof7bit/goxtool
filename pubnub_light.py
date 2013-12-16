@@ -98,7 +98,7 @@ class PubNub(): #pylint: disable=R0902
                     msg_list = data[0]
 
                 if len(data) > 2:
-                    chan_list = data[2]
+                    chan_list = data[2].split(",")
                 else:
                     chan_list = [self.chan for m in msg_list]
 
