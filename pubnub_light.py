@@ -37,7 +37,8 @@ class SocketClosedException(Exception):
 
 class PubNub(): #pylint: disable=R0902
     """implements a simple pubnub client that tries to stay connected
-    and is interruptible immediately (using socket instead of urllib2)."""
+    and is interruptible immediately (using socket instead of urllib2).
+    This client supports SSL connection and gzip compression."""
     def __init__(self):
         self.sock = None
         self.uuid = uuid.uuid4()
