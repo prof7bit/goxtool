@@ -128,7 +128,7 @@ class PubNub(): #pylint: disable=R0902
 
     def _send_request(self):
         """send http request, read response header and return
-        rsponse header info tuple (see: _read_response_header)."""
+        response header info tuple (see: _read_response_header)."""
         headers = [
             "GET /subscribe/%s/%s/0/%i?uuid=%s&auth=%s HTTP/1.1" \
                 % (self.sub, self.chan, self.timestamp, self.uuid, self.auth),
