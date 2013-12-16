@@ -1302,6 +1302,7 @@ class PubnubClient(BaseClient):
                         self.signal_recv(self, (message))
             except Exception:
                 self.debug("### public channel interrupted")
+                #self.debug(traceback.format_exc())
                 if not self._terminating:
                     time.sleep(1)
                     self.debug("### public channel restarting")

@@ -19,7 +19,9 @@
 
 import base64
 from Crypto.Cipher import AES
+import gzip
 import hashlib
+import io
 import json
 import socket
 import ssl
@@ -70,17 +72,34 @@ class PubNub(): #pylint: disable=R0902
         loop because you merely called subscribe() again or whether you want
         to terminate because your application ends.
         """
-        if not self.connected:
-            self._connect()
-        content_length = self._send_request()
-        res = self._read_num_bytes(content_length)
-        data = json.loads(res)
-        self.timestamp = int(data[1])
-        msg = data[0]
-        if self.cipher:
-            for i in range(len(msg)):
-                msg[i] = self._decrypt(msg[i])
-        return msg
+        try:
+            if not self.connected:
+                self._connect()
+
+            (length, encoding, chunked) = self._send_request()
+
+            if chunked:
+                data = self._read_chunked()
+            else:
+                data = self._read_num_bytes(length)
+
+            if encoding == "gzip":
+                data = self._unzip(data)
+
+            data = json.loads(data)
+            self.timestamp = int(data[1])
+            msg = data[0]
+
+            if self.cipher:
+                for i in range(len(msg)):
+                    msg[i] = self._decrypt(msg[i])
+
+            return msg
+
+        except:
+            self.connected = False
+            self.sock.close()
+            raise
 
     def hup(self):
         """close socket and force the blocking read() to exit with an Exception.
@@ -107,11 +126,12 @@ class PubNub(): #pylint: disable=R0902
         self.connected = True
 
     def _send_request(self):
-        """send http request, read response header and return Content-Length."""
+        """send http request, read response header and return
+        rsponse header info tuple (see: _read_response_header)."""
         headers = [
             "GET /subscribe/%s/%s/0/%i?uuid=%s&auth=%s HTTP/1.1" \
                 % (self.sub, self.chan, self.timestamp, self.uuid, self.auth),
-            "Accept-Encoding: identity",
+            "Accept-Encoding: gzip",
             "Host: pubsub.pubnub.com",
             "Connection: keep-alive"]
         str_headers = "%s\r\n\r\n" % "\r\n".join(headers)
@@ -119,23 +139,40 @@ class PubNub(): #pylint: disable=R0902
         return self._read_response_header()
 
     def _read_response_header(self):
-        """read the http response header and return value of Content-Length."""
-        hdr = ""
+        """read the http response header and return a tuple containing
+        the values (length, encoding, chunked) which will be needed to
+        correctly read and interpret the rest of the response."""
+        length = None
+        encoding = "identity"
+        chunked = False
+
+        hdr = []
         while True:
+            line = self._read_line()
+            if not line:
+                break
+            hdr.append(line)
+
+        for line in hdr:
+            if "Content-Length" in line:
+                length = int(line[15:])
+            if "Content-Encoding" in line:
+                encoding = line[17:].strip()
+            if "Transfer-Encoding: chunked" in line:
+                chunked = True
+
+        return (length, encoding, chunked)
+
+    def _read_line(self):
+        """read one line from socket until and including CRLF, return stripped
+        line or raise SocketClosedException if socket was closed"""
+        line = ""
+        while not line[-2:] == "\r\n":
             char = self.sock.recv(1)
-            if char == "":
-                self.connected = False
-                self.sock.close()
+            if not char:
                 raise SocketClosedException
-            hdr += char
-            if hdr[-4:] == "\r\n\r\n":
-                lines = hdr.split("\r\n")
-                for line in lines:
-                    if "Content-Length" in line:
-                        return int(line[15:])
-                self.connected = False
-                self.sock.close()
-                raise SocketClosedException
+            line += char
+        return line.strip()
 
     def _read_num_bytes(self, num):
         """read (blocking) exactly num bytes from socket,
@@ -143,12 +180,27 @@ class PubNub(): #pylint: disable=R0902
         buf = ""
         while len(buf) < num:
             chunk = self.sock.recv(num - len(buf))
-            if chunk == "":
-                self.connected = False
-                self.sock.close()
+            if not chunk:
                 raise SocketClosedException
             buf += chunk
         return buf
+
+    def _read_chunked(self):
+        """read chunked transfer encoding"""
+        buf = ""
+        size = 1
+        while size:
+            size = int(self._read_line(), 16)
+            buf += self._read_num_bytes(size)
+            self._read_num_bytes(2) # CRLF
+        return buf
+
+    #pylint: disable=R0201
+    def _unzip(self, data):
+        """unzip the gzip content encoding"""
+        with io.BytesIO(data) as buf:
+            with gzip.GzipFile(fileobj=buf) as unzipped:
+                return unzipped.read()
 
     def _decrypt(self, msg):
         """decrypt a single pubnub message"""
