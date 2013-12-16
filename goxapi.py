@@ -1413,7 +1413,7 @@ class SocketIOClient(BaseClient):
                     msg = self.socket.recv()
                     self._time_last_received = time.time()
                     if msg == "2::":
-                        self.debug("### ping -> pong")
+                        #self.debug("### ping -> pong")
                         self.socket.send("2::")
                         continue
                     prefix = msg[:10]
@@ -1441,7 +1441,7 @@ class SocketIOClient(BaseClient):
     def slot_keepalive_timer(self, _sender, _data):
         """send a keepalive, just to make sure our socket is not dead"""
         if self.connected:
-            self.debug("### sending keepalive")
+            #self.debug("### sending keepalive")
             self._try_send_raw("2::")
 
 
