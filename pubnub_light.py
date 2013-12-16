@@ -38,7 +38,7 @@ class SocketClosedException(Exception):
 class PubNub(): #pylint: disable=R0902
     """implements a simple pubnub client that tries to stay connected
     and is interruptible immediately (using socket instead of urllib2).
-    This client supports SSL connection and gzip compression."""
+    This client supports multiplexing, SSL and gzip compression."""
     def __init__(self):
         self.sock = None
         self.uuid = uuid.uuid4()
@@ -65,7 +65,9 @@ class PubNub(): #pylint: disable=R0902
         self.hup()
 
     def read(self):
-        """read (blocking) and return list of messages. Right after subscribe()
+        """read (blocking) and return list of messages. Each message in the
+        list a tuple of (channel, msg) where channel is the name of the channel
+        the message came from and msg is the payload. Right after subscribe()
         you should enter a loop over this blocking read() call to read messages
         from the subscribed channels. It will raise an exception if interrupted
         (for example by hup() or by subscribe() or if something goes wrong),
@@ -89,13 +91,20 @@ class PubNub(): #pylint: disable=R0902
 
             data = json.loads(data)
             self.timestamp = int(data[1])
-            msg = data[0]
+            if len(data[0]):
+                if self.cipher:
+                    msg_list = [self._decrypt(m) for m in data[0]]
+                else:
+                    msg_list = data[0]
 
-            if self.cipher:
-                for i in range(len(msg)):
-                    msg[i] = self._decrypt(msg[i])
+                if len(data) > 2:
+                    chan_list = data[2]
+                else:
+                    chan_list = [self.chan for m in msg_list]
 
-            return msg
+                return zip(chan_list, msg_list)
+            else:
+                return []
 
         except:
             self.connected = False

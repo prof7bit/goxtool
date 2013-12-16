@@ -1299,7 +1299,7 @@ class PubnubClient(BaseClient):
                         self.connected = True
                         self.signal_connected(self, None)
                     for message in messages:
-                        self.signal_recv(self, (message))
+                        self.signal_recv(self, (message[1]))
             except Exception:
                 self.debug("### public channel interrupted")
                 #self.debug(traceback.format_exc())
@@ -1318,7 +1318,7 @@ class PubnubClient(BaseClient):
                     messages = self._pubnub_priv.read()
                     self._time_last_received = time.time()
                     for message in messages:
-                        self.signal_recv(self, (message))
+                        self.signal_recv(self, (message[1]))
 
             except Exception:
                 self.debug("### private channel interrupted")
