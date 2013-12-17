@@ -243,6 +243,7 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "history_timeframe", "15"]
                 ,["gox", "secret_key", ""]
                 ,["gox", "secret_secret", ""]
+                ,["pubnub", "stream_sorter_time_window", "0.8"]
                 ]
 
     def __init__(self, filename):
@@ -1248,7 +1249,8 @@ class PubnubClient(BaseClient):
         self._pubnub = None
         self._pubnub_priv = None
         self._private_thread_started = False
-        self.stream_sorter = PubnubStreamSorter(0.8)
+        self.stream_sorter = PubnubStreamSorter(
+            self.config.get_float("pubnub", "stream_sorter_time_window"))
         self.stream_sorter.signal_pop.connect(self.signal_recv)
         self.stream_sorter.signal_debug.connect(self.signal_debug)
 
@@ -1421,7 +1423,7 @@ class PubnubStreamSorter(BaseObject):
                 self._update_statistics(stamp)
                 self.signal_pop(self, (msg))
             self.lock.release()
-            time.sleep(self.delay / 10.0)
+            time.sleep(50E-3)
 
     def _update_statistics(self, stamp):
         """collect some statistics and print to log occasionally"""
