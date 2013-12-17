@@ -1344,8 +1344,13 @@ class PubnubClient(BaseClient):
         self.request_info()
         self.request_orders()
         if download_market_data:
-            self.request_fulldepth()
-            self.request_history()
+            if self.config.get_bool("gox", "load_fulldepth"):
+                if not FORCE_NO_FULLDEPTH:
+                    self.request_fulldepth()
+
+            if self.config.get_bool("gox", "load_history"):
+                if not FORCE_NO_HISTORY:
+                    self.request_history()
         self._time_last_subscribed = time.time()
 
     def on_idkey_received(self, data):
