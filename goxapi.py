@@ -1392,6 +1392,7 @@ class PubnubStreamSorter(BaseObject):
         self.stat_bad = 0
         self.stat_good = 0
         self.signal_pop = Signal()
+        self.lock = threading.Lock()
 
     def start(self):
         start_thread(self._extract_thread_func, "message sorter thread")
@@ -1401,7 +1402,9 @@ class PubnubStreamSorter(BaseObject):
     def put(self, message):
         """put a message into the queue"""
         stamp = int(message["stamp"])
+        self.lock.acquire()
         bisect.insort(self.queue, (stamp, time.time(), message))
+        self.lock.release()
 
     def stop(self):
         """terminate the sorter thread"""
@@ -1412,10 +1415,12 @@ class PubnubStreamSorter(BaseObject):
         from the queue after they have stayed delay time in
         it and fire signal_pop for each message."""
         while not self.terminating:
+            self.lock.acquire()
             while self.queue and time.time() - self.queue[0][1] > self.delay:
                 (stamp, _inserted, msg) = self.queue.pop(0)
                 self._update_statistics(stamp)
                 self.signal_pop(self, (msg))
+            self.lock.release()
             time.sleep(self.delay / 10.0)
 
     def _update_statistics(self, stamp):
