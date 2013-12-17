@@ -1444,7 +1444,7 @@ class PubnubStreamSorter(BaseObject):
         """collect some statistics and print to log occasionally"""
         if stamp < self.stat_last:
             self.stat_bad += 1
-            self.debug("### order late:", self.stat_last - stamp)
+            self.debug("### message late:", self.stat_last - stamp)
         else:
             self.stat_good += 1
         self.stat_last = stamp
