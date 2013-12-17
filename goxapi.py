@@ -1395,6 +1395,7 @@ class PubnubStreamSorter(BaseObject):
         self.stat_good = 0
         self.signal_pop = Signal()
         self.lock = threading.Lock()
+        self.average_lag = 0
 
     def start(self):
         start_thread(self._extract_thread_func, "message sorter thread")
@@ -1403,7 +1404,20 @@ class PubnubStreamSorter(BaseObject):
 
     def put(self, message):
         """put a message into the queue"""
-        stamp = int(message["stamp"])
+        stamp = int(message["stamp"]) / 1000000.0
+
+        # calculate smooth average socket lag
+        lag = time.time() - stamp
+        if self.average_lag == 0:
+            self.average_lag = lag
+        else:
+            lag_change = lag - self.average_lag
+            if lag_change > 0:
+                self.average_lag += lag_change
+            else:
+                self.average_lag += lag_change / 30
+
+        # sort it into the existing waiting messages
         self.lock.acquire()
         bisect.insort(self.queue, (stamp, time.time(), message))
         self.lock.release()
@@ -1418,20 +1432,21 @@ class PubnubStreamSorter(BaseObject):
         it and fire signal_pop for each message."""
         while not self.terminating:
             self.lock.acquire()
-            while self.queue and time.time() - self.queue[0][1] > self.delay:
+            while self.queue \
+            and time.time() - self.average_lag - self.queue[0][0] > self.delay:
                 (stamp, _inserted, msg) = self.queue.pop(0)
-                self._update_statistics(stamp)
+                self._update_statistics(stamp, msg)
                 self.signal_pop(self, (msg))
             self.lock.release()
             time.sleep(50E-3)
 
-    def _update_statistics(self, stamp):
+    def _update_statistics(self, stamp, msg):
         """collect some statistics and print to log occasionally"""
-        if stamp > self.stat_last:
-            self.stat_good += 1
-        else:
+        if stamp < self.stat_last:
             self.stat_bad += 1
-            self.debug("### out of order message could not be sorted")
+            self.debug("### order late:", self.stat_last - stamp)
+        else:
+            self.stat_good += 1
         self.stat_last = stamp
         if self.stat_good % 2000 == 0:
             if self.stat_good + self.stat_bad > 0:
@@ -1757,6 +1772,13 @@ class Gox(BaseObject):
             msg = json.loads(str_json)
         self.msg = msg
 
+        if "stamp" in msg:
+            delay = time.time() * 1e6 - int(msg["stamp"])
+            if delay > self.socket_lag:
+                self.socket_lag = delay
+            else:
+                self.socket_lag = (self.socket_lag * 29 + delay) / 30
+
         if "op" in msg:
             try:
                 msg_op = msg["op"]
@@ -1902,7 +1924,6 @@ class Gox(BaseObject):
         total_volume = int(msg["total_volume_int"])
 
         delay = time.time() * 1e6 - timestamp
-        self.socket_lag = (self.socket_lag * 2 + delay) / 3
 
         self.debug("depth: %s: %s @ %s total vol: %s (age: %0.2f s)" % (
             typ,
