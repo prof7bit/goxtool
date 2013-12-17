@@ -1294,12 +1294,13 @@ class PubnubClient(BaseClient):
             try:
                 while not self._terminating:
                     messages = self._pubnub.read()
+                    messages.sort(key=lambda (c,m): m["stamp"])
                     self._time_last_received = time.time()
                     if not self.connected:
                         self.connected = True
                         self.signal_connected(self, None)
-                    for message in messages:
-                        self.signal_recv(self, (message[1]))
+                    for channel, message in messages:
+                        self.signal_recv(self, (message))
             except Exception:
                 self.debug("### public channel interrupted")
                 #self.debug(traceback.format_exc())
@@ -1316,9 +1317,10 @@ class PubnubClient(BaseClient):
             try:
                 while not self._terminating:
                     messages = self._pubnub_priv.read()
+                    messages.sort(key=lambda (c,m): m["stamp"])
                     self._time_last_received = time.time()
-                    for message in messages:
-                        self.signal_recv(self, (message[1]))
+                    for channel, message in messages:
+                        self.signal_recv(self, (message))
 
             except Exception:
                 self.debug("### private channel interrupted")
@@ -1362,7 +1364,6 @@ class PubnubClient(BaseClient):
         if not self._private_thread_started:
             start_thread(self._recv_private_thread_func, "private channel thread")
             self._private_thread_started = True
-
 
 
 class SocketIOClient(BaseClient):

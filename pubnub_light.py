@@ -220,4 +220,4 @@ class PubNub(): #pylint: disable=R0902
         key = hashlib.sha256(self.cipher).hexdigest()[0:32]
         aes = AES.new(key, AES.MODE_CBC, "0123456789012345")
         decrypted = aes.decrypt(base64.decodestring(msg))
-        return decrypted[0:-ord(decrypted[-1])]
+        return json.loads(decrypted[0:-ord(decrypted[-1])])
