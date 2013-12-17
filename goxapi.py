@@ -29,6 +29,7 @@ if PY_VERSION < (2, 7):
 
 from ConfigParser import SafeConfigParser
 import base64
+import bisect
 import binascii
 import contextlib
 from Crypto.Cipher import AES
@@ -1242,15 +1243,19 @@ class PubnubClient(BaseClient):
     set automatically."""
     def __init__(self, curr_base, curr_quote, secret, config):
         global FORCE_HTTP_API #pylint: disable=W0603
+        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
         FORCE_HTTP_API = True
         self._pubnub = None
         self._pubnub_priv = None
         self._private_thread_started = False
-        BaseClient.__init__(self, curr_base, curr_quote, secret, config)
+        self.stream_sorter = PubnubStreamSorter(self, 0.5)
+        self.stream_sorter.signal_pop.connect(self.signal_recv)
+        self.stream_sorter.signal_debug.connect(self.signal_debug)
 
     def stop(self):
         """stop the client"""
         self._terminating = True
+        self.stream_sorter.terminate()
         self._timer.cancel()
         self.force_reconnect()
 
@@ -1294,13 +1299,12 @@ class PubnubClient(BaseClient):
             try:
                 while not self._terminating:
                     messages = self._pubnub.read()
-                    messages.sort(key=lambda (c,m): m["stamp"])
                     self._time_last_received = time.time()
                     if not self.connected:
                         self.connected = True
                         self.signal_connected(self, None)
-                    for channel, message in messages:
-                        self.signal_recv(self, (message))
+                    for _channel, message in messages:
+                        self.stream_sorter.put(message)
             except Exception:
                 self.debug("### public channel interrupted")
                 #self.debug(traceback.format_exc())
@@ -1317,10 +1321,9 @@ class PubnubClient(BaseClient):
             try:
                 while not self._terminating:
                     messages = self._pubnub_priv.read()
-                    messages.sort(key=lambda (c,m): m["stamp"])
                     self._time_last_received = time.time()
-                    for channel, message in messages:
-                        self.signal_recv(self, (message))
+                    for _channel, message in messages:
+                        self.stream_sorter.put(message)
 
             except Exception:
                 self.debug("### private channel interrupted")
@@ -1341,16 +1344,18 @@ class PubnubClient(BaseClient):
         # no channels to subscribe, this happened in PubNub.__init__ already
         if self.secret and self.secret.know_secret():
             self.enqueue_http_request("stream/private_get", {}, "idkey")
+
         self.request_info()
         self.request_orders()
+
         if download_market_data:
             if self.config.get_bool("gox", "load_fulldepth"):
                 if not FORCE_NO_FULLDEPTH:
                     self.request_fulldepth()
-
             if self.config.get_bool("gox", "load_history"):
                 if not FORCE_NO_HISTORY:
                     self.request_history()
+
         self._time_last_subscribed = time.time()
 
     def on_idkey_received(self, data):
@@ -1369,6 +1374,58 @@ class PubnubClient(BaseClient):
         if not self._private_thread_started:
             start_thread(self._recv_private_thread_func, "private channel thread")
             self._private_thread_started = True
+
+
+class PubnubStreamSorter(BaseObject):
+    """sort the incoming messages by "stamp" field. This will introduce
+    a delay but its the only way to get these messages into proper order."""
+    def __init__(self, client, delay):
+        BaseObject.__init__(self)
+        self.client = client
+        self.delay = delay
+        self.queue = []
+        self.terminating = False
+        self.stat_last = 0
+        self.stat_bad = 0
+        self.stat_good = 0
+        self.signal_pop = Signal()
+        start_thread(self._extract_thread_func, "message sorter thread")
+        self.debug("### initialized stream sorter with %g s time window"
+            % (self.delay))
+
+    def put(self, message):
+        """put a message into the queue"""
+        stamp = int(message["stamp"])
+        bisect.insort(self.queue, (stamp, time.time(), message))
+
+    def terminate(self):
+        """terminate the sorter thread"""
+        self.terminating = True
+
+    def _extract_thread_func(self):
+        """this thread will permanently pop oldest messages
+        from the queue after they have stayed delay time in
+        it and fire signal_pop for each message."""
+        while not self.terminating:
+            while self.queue and time.time() - self.queue[0][1] > self.delay:
+                (stamp, _inserted, msg) = self.queue.pop(0)
+                self._update_statistics(stamp)
+                self.signal_pop(self, (msg))
+            time.sleep(self.delay / 5.0)
+
+    def _update_statistics(self, stamp):
+        """collect some statistics and print to log occasionally"""
+        if stamp > self.stat_last:
+            self.stat_good += 1
+        else:
+            self.stat_bad += 1
+            self.debug("### out of order message could not be sorted")
+        self.stat_last = stamp
+        if self.stat_good % 2000 == 0:
+            if self.stat_good + self.stat_bad > 0:
+                self.debug("### stream sorter: good:%i bad:%i (%g%%)" % \
+                    (self.stat_good, self.stat_bad, \
+                    100.0 * self.stat_bad / (self.stat_bad + self.stat_good)))
 
 
 class SocketIOClient(BaseClient):
@@ -1687,6 +1744,7 @@ class Gox(BaseObject):
         else:
             msg = json.loads(str_json)
         self.msg = msg
+
         if "op" in msg:
             try:
                 msg_op = msg["op"]
