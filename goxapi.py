@@ -1248,14 +1248,18 @@ class PubnubClient(BaseClient):
         self._pubnub = None
         self._pubnub_priv = None
         self._private_thread_started = False
-        self.stream_sorter = PubnubStreamSorter(self, 0.5)
+        self.stream_sorter = PubnubStreamSorter(0.8)
         self.stream_sorter.signal_pop.connect(self.signal_recv)
         self.stream_sorter.signal_debug.connect(self.signal_debug)
+
+    def start(self):
+        BaseClient.start(self)
+        self.stream_sorter.start()
 
     def stop(self):
         """stop the client"""
         self._terminating = True
-        self.stream_sorter.terminate()
+        self.stream_sorter.stop()
         self._timer.cancel()
         self.force_reconnect()
 
@@ -1379,9 +1383,8 @@ class PubnubClient(BaseClient):
 class PubnubStreamSorter(BaseObject):
     """sort the incoming messages by "stamp" field. This will introduce
     a delay but its the only way to get these messages into proper order."""
-    def __init__(self, client, delay):
+    def __init__(self, delay):
         BaseObject.__init__(self)
-        self.client = client
         self.delay = delay
         self.queue = []
         self.terminating = False
@@ -1389,6 +1392,8 @@ class PubnubStreamSorter(BaseObject):
         self.stat_bad = 0
         self.stat_good = 0
         self.signal_pop = Signal()
+
+    def start(self):
         start_thread(self._extract_thread_func, "message sorter thread")
         self.debug("### initialized stream sorter with %g s time window"
             % (self.delay))
@@ -1398,7 +1403,7 @@ class PubnubStreamSorter(BaseObject):
         stamp = int(message["stamp"])
         bisect.insort(self.queue, (stamp, time.time(), message))
 
-    def terminate(self):
+    def stop(self):
         """terminate the sorter thread"""
         self.terminating = True
 
@@ -1411,7 +1416,7 @@ class PubnubStreamSorter(BaseObject):
                 (stamp, _inserted, msg) = self.queue.pop(0)
                 self._update_statistics(stamp)
                 self.signal_pop(self, (msg))
-            time.sleep(self.delay / 5.0)
+            time.sleep(self.delay / 10.0)
 
     def _update_statistics(self, stamp):
         """collect some statistics and print to log occasionally"""
