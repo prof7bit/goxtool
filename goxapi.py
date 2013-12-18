@@ -1432,7 +1432,7 @@ class PubnubStreamSorter(BaseObject):
         while not self.terminating:
             self.lock.acquire()
             while self.queue \
-            and time.time() - self.average_lag - self.queue[0][0] > self.delay:
+            and self.queue[0][0] + self.average_lag + self.delay < time.time():
                 (stamp, msg) = self.queue.pop(0)
                 self._update_statistics(stamp, msg)
                 self.signal_pop(self, (msg))
