@@ -1109,9 +1109,7 @@ class BaseClient(BaseObject):
 
 
 class WebsocketClient(BaseClient):
-    """this implements a connection to MtGox through the older (but faster)
-    websocket protocol. Unfortuntely its just as unreliable as the socket.io."""
-
+    """this implements a connection to MtGox through the websocket protocol."""
     def __init__(self, curr_base, curr_quote, secret, config):
         BaseClient.__init__(self, curr_base, curr_quote, secret, config)
         self.hostname = WEBSOCKET_HOST
@@ -1457,8 +1455,7 @@ class PubnubStreamSorter(BaseObject):
 
 
 class SocketIOClient(BaseClient):
-    """this implements a connection to MtGox using the new socketIO protocol.
-    This should replace the older plain websocket API"""
+    """this implements a connection to MtGox using the socketIO protocol."""
 
     def __init__(self, curr_base, curr_quote, secret, config):
         BaseClient.__init__(self, curr_base, curr_quote, secret, config)
