@@ -1398,6 +1398,7 @@ class PubnubStreamSorter(BaseObject):
         self.average_lag = 0
 
     def start(self):
+        """start the extraction thread"""
         start_thread(self._extract_thread_func, "message sorter thread")
         self.debug("### initialized stream sorter with %g s time window"
             % (self.delay))
@@ -1419,7 +1420,7 @@ class PubnubStreamSorter(BaseObject):
 
         # sort it into the existing waiting messages
         self.lock.acquire()
-        bisect.insort(self.queue, (stamp, time.time(), message))
+        bisect.insort(self.queue, (stamp, message))
         self.lock.release()
 
     def stop(self):
@@ -1434,13 +1435,13 @@ class PubnubStreamSorter(BaseObject):
             self.lock.acquire()
             while self.queue \
             and time.time() - self.average_lag - self.queue[0][0] > self.delay:
-                (stamp, _inserted, msg) = self.queue.pop(0)
+                (stamp, msg) = self.queue.pop(0)
                 self._update_statistics(stamp, msg)
                 self.signal_pop(self, (msg))
             self.lock.release()
             time.sleep(50E-3)
 
-    def _update_statistics(self, stamp, msg):
+    def _update_statistics(self, stamp, _msg):
         """collect some statistics and print to log occasionally"""
         if stamp < self.stat_last:
             self.stat_bad += 1
