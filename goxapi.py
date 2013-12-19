@@ -243,7 +243,7 @@ class GoxConfig(SafeConfigParser):
                 ,["gox", "history_timeframe", "15"]
                 ,["gox", "secret_key", ""]
                 ,["gox", "secret_secret", ""]
-                ,["pubnub", "stream_sorter_time_window", "0.8"]
+                ,["pubnub", "stream_sorter_time_window", "0.5"]
                 ]
 
     def __init__(self, filename):
@@ -1393,7 +1393,6 @@ class PubnubStreamSorter(BaseObject):
         self.stat_good = 0
         self.signal_pop = Signal()
         self.lock = threading.Lock()
-        self.average_lag = 0
 
     def start(self):
         """start the extraction thread"""
@@ -1405,20 +1404,9 @@ class PubnubStreamSorter(BaseObject):
         """put a message into the queue"""
         stamp = int(message["stamp"]) / 1000000.0
 
-        # calculate smooth average socket lag
-        lag = time.time() - stamp
-        if self.average_lag == 0:
-            self.average_lag = lag
-        else:
-            lag_change = lag - self.average_lag
-            if lag_change > 0:
-                self.average_lag += lag_change
-            else:
-                self.average_lag += lag_change / 30
-
         # sort it into the existing waiting messages
         self.lock.acquire()
-        bisect.insort(self.queue, (stamp, message))
+        bisect.insort(self.queue, (stamp, time.time(), message))
         self.lock.release()
 
     def stop(self):
@@ -1432,8 +1420,8 @@ class PubnubStreamSorter(BaseObject):
         while not self.terminating:
             self.lock.acquire()
             while self.queue \
-            and self.queue[0][0] + self.average_lag + self.delay < time.time():
-                (stamp, msg) = self.queue.pop(0)
+            and self.queue[0][1] + self.delay < time.time():
+                (stamp, _received, msg) = self.queue.pop(0)
                 self._update_statistics(stamp, msg)
                 self.signal_pop(self, (msg))
             self.lock.release()
@@ -1772,10 +1760,7 @@ class Gox(BaseObject):
 
         if "stamp" in msg:
             delay = time.time() * 1e6 - int(msg["stamp"])
-            if delay > self.socket_lag:
-                self.socket_lag = delay
-            else:
-                self.socket_lag = (self.socket_lag * 29 + delay) / 30
+            self.socket_lag = (self.socket_lag * 29 + delay) / 30
 
         if "op" in msg:
             try:
