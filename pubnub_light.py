@@ -27,7 +27,6 @@ import socket
 import ssl
 import uuid
 
-
 class SocketClosedException(Exception):
     """raised when socket read fails. This normally happens when the
     hup() method is invoked, your thread that loops over read() should

@@ -2340,9 +2340,6 @@ class OrderBook(BaseObject):
             for order in self.owns:
                 if order.oid == oid:
                     found = True
-                    if order.status == "open" and status == "open":
-                        # ignore duplicated open message
-                        return
                     self.debug(
                         "### updating order %s " % oid,
                         "volume:", self.gox.base2str(volume),
